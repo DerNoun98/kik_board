@@ -7,9 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Marcellus&display=swap" rel="stylesheet">
-  
-  <!-- Быстрый и надежный WebSockets клиент для комнат -->
-  <script src="https://unpkg.com/piesocket-js@5"></script>
 
   <style>
     :root {
@@ -37,6 +34,7 @@
       overflow: hidden;
     }
 
+    /* ВЕРХНЯЯ КОВАНАЯ ПАНЕЛЬ */
     header {
       height: 52px;
       background: linear-gradient(180deg, #2b2118 0%, #18120d 70%, #0c0806 100%);
@@ -55,6 +53,7 @@
       gap: 12px;
     }
 
+    /* КОВАНЫЙ ЩИТ-ЛОГОТИП */
     .logo-shield {
       width: 36px;
       height: 44px;
@@ -144,31 +143,6 @@
       box-shadow: inset 0 0 5px rgba(0,0,0,0.8), 0 0 10px rgba(241, 183, 94, 0.5);
     }
 
-    .btn-share {
-      border-color: #8b6b23;
-      background: linear-gradient(180deg, #574116 0%, #30220a 100%);
-      color: #ffd782;
-      font-weight: bold;
-    }
-    .btn-share:hover {
-      border-color: #ffd700;
-      color: #ffffff;
-      box-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
-    }
-
-    .status-badge {
-      font-size: 0.75rem;
-      padding: 3px 9px;
-      border-radius: 4px;
-      background: rgba(0,0,0,0.65);
-      border: 1px solid #5d4633;
-      color: #a4d492;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-family: 'Cinzel', serif;
-    }
-
     .zoom-box {
       display: flex;
       align-items: center;
@@ -200,6 +174,7 @@
       color: var(--gold-text);
     }
 
+    /* ОСНОВНАЯ СЦЕНА ПОДЗЕМЕЛЬЯ */
     .dungeon-scene {
       flex: 1;
       position: relative;
@@ -214,6 +189,7 @@
       background-size: cover;
     }
 
+    /* ЛЕВАЯ КОЛОНКА - ИЗОБРАЖЕНИЯ */
     .sidebar-scroll {
       width: 240px;
       height: 100%;
@@ -225,11 +201,6 @@
       box-shadow: inset 0 0 20px rgba(0,0,0,0.9), 0 6px 20px rgba(0,0,0,0.8);
       position: relative;
       z-index: 10;
-    }
-
-    body.spectator-mode .sidebar-scroll,
-    body.spectator-mode .editor-only {
-      display: none !important;
     }
 
     .scroll-head {
@@ -327,6 +298,7 @@
 
     .gallery-item:hover .del-btn { display: block; }
 
+    /* ДЕКОРАТИВНЫЕ СИЛУЭТЫ СТРАЖЕЙ */
     .lizard-guard {
       position: absolute;
       bottom: 0;
@@ -350,6 +322,7 @@
       background-image: radial-gradient(circle at 40% 25%, rgba(60, 255, 100, 0.3) 0%, transparent 40%);
     }
 
+    /* ЦЕНТРАЛЬНЫЙ СТОЛ (ПОЛНОРАЗМЕРНЫЙ СВИТОК) */
     .scroll-table-container {
       flex: 1;
       height: 100%;
@@ -413,6 +386,7 @@
 </head>
 <body>
 
+  <!-- Верхняя панель инструментов -->
   <header>
     <div class="title-box">
       <div class="logo-shield" title="Крокодилы и Канализации">
@@ -443,16 +417,16 @@
     </div>
 
     <div class="toolbar">
-      <button class="btn active editor-only" id="tool-select" title="Горячая клавиша: V">✋ Перемещение</button>
-      <button class="btn editor-only" id="tool-brush" title="Горячая клавиша: B">🖌️ Кисть</button>
-      <button class="btn editor-only" id="tool-eraser" title="Горячая клавиша: E">🧹 Ластик</button>
+      <button class="btn active" id="tool-select" title="Горячая клавиша: V">✋ Перемещение</button>
+      <button class="btn" id="tool-brush" title="Горячая клавиша: B">🖌️ Кисть</button>
+      <button class="btn" id="tool-eraser" title="Горячая клавиша: E">🧹 Ластик</button>
 
-      <div class="range-box editor-only">
+      <div class="range-box">
         <label for="brush-color">Цвет:</label>
         <input type="color" id="brush-color" value="#8b1c1c">
       </div>
 
-      <div class="range-box editor-only">
+      <div class="range-box">
         <label for="brush-size">Размер:</label>
         <input type="range" id="brush-size" min="2" max="60" value="6">
       </div>
@@ -465,17 +439,15 @@
       </div>
 
       <button class="btn" id="btn-toggle-grid">🕸️ Сетка</button>
-      <button class="btn editor-only" id="btn-clear-drawings" style="color: #ff9d9d;">Очистить рисунки</button>
+      <button class="btn" id="btn-clear-drawings" style="color: #ff9d9d;">Очистить рисунки</button>
 
-      <button class="btn editor-only" id="btn-save-project" title="Сохранить в файл">💾 Сохранить</button>
-      <button class="btn editor-only" id="btn-load-trigger" title="Загрузить из файла">📂 Загрузить</button>
+      <button class="btn" id="btn-save-project" title="Сохранить в файл">💾 Сохранить</button>
+      <button class="btn" id="btn-load-trigger" title="Загрузить из файла">📂 Загрузить</button>
       <input type="file" id="save-file-input" accept=".dnd,.json">
-
-      <button class="btn btn-share" id="btn-share-link">🔗 Поделиться столом</button>
-      <div class="status-badge" id="net-status" style="display: none;"></div>
     </div>
   </header>
 
+  <!-- Сцена -->
   <main class="dungeon-scene">
     <aside class="sidebar-scroll">
       <div class="scroll-head">Изображения</div>
@@ -497,9 +469,9 @@
     </section>
 
     <div class="instructions-card">
-      • <b>Зум:</b> Колёсико мыши (независимый у каждого)<br>
+      • <b>Зум:</b> Колёсико мыши<br>
       • <b>Панорама:</b> Колёсико или <b>Пробел + ЛКМ</b><br>
-      <span id="role-hint">• <b>Изображения:</b> Перетаскивание инструментом «✋»</span>
+      • <b>Изображения:</b> Перетаскивание инструментом «✋»
     </div>
   </main>
 
@@ -520,9 +492,6 @@
     const btnClearDrawings = document.getElementById('btn-clear-drawings');
     const btnSaveProject = document.getElementById('btn-save-project');
     const btnLoadTrigger = document.getElementById('btn-load-trigger');
-    const btnShareLink = document.getElementById('btn-share-link');
-    const netStatus = document.getElementById('net-status');
-    const roleHint = document.getElementById('role-hint');
 
     const zoomLevelDisplay = document.getElementById('zoom-level');
     const btnZoomIn = document.getElementById('btn-zoom-in');
@@ -538,8 +507,6 @@
     let currentTool = 'select';
     let isDrawing = false;
     let lastWorldPos = { x: 0, y: 0 };
-    let strokeBatch = [];
-    let strokeTimer = null;
     let renderRequested = false;
 
     let showGrid = true;
@@ -555,13 +522,6 @@
     let tokenOffsetX = 0;
     let tokenOffsetY = 0;
     const RESIZE_HANDLE_RADIUS = 9;
-
-    let isHost = true;
-    let pieSocket = null;
-    let currentChannel = null;
-    let currentRoomId = null;
-    let clientId = 'u_' + Math.random().toString(36).substring(2, 9);
-    let activeSpectators = new Set();
 
     function screenToWorld(sx, sy) {
       return {
@@ -626,8 +586,8 @@
         }
       }
 
-      // Выделение токена у мастера
-      if (selectedToken && isHost) {
+      // Выделение токена
+      if (selectedToken) {
         ctx.save();
         ctx.strokeStyle = '#d49635';
         ctx.lineWidth = 2.5 / camera.zoom;
@@ -729,7 +689,7 @@
         return;
       }
 
-      if (e.button !== 0 || !isHost) return;
+      if (e.button !== 0) return;
 
       if (currentTool === 'select') {
         if (selectedToken && isInResizeHandle(worldPos.x, worldPos.y, selectedToken)) {
@@ -746,7 +706,6 @@
 
           tokens = tokens.filter(t => t !== clicked);
           tokens.push(clicked);
-          broadcastTokens();
         } else {
           selectedToken = null;
         }
@@ -755,7 +714,6 @@
         isDrawing = true;
         lastWorldPos = worldPos;
         addStroke(worldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
-        queueStrokeForBroadcast(worldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
       }
     });
 
@@ -774,17 +732,11 @@
         return;
       }
 
-      if (!isHost) {
-        canvas.style.cursor = isSpacePressed ? 'grab' : 'default';
-        return;
-      }
-
       if (currentTool === 'select') {
         if (isResizingToken && selectedToken) {
           selectedToken.width = Math.max(25, Math.round(worldPos.x - selectedToken.x));
           selectedToken.height = Math.max(25, Math.round(worldPos.y - selectedToken.y));
           requestRender();
-          broadcastTokensThrottled();
           return;
         }
 
@@ -792,7 +744,6 @@
           selectedToken.x = Math.round(worldPos.x - tokenOffsetX);
           selectedToken.y = Math.round(worldPos.y - tokenOffsetY);
           requestRender();
-          broadcastTokensThrottled();
           return;
         }
 
@@ -809,7 +760,6 @@
         canvas.style.cursor = 'crosshair';
         if (isDrawing) {
           addStroke(lastWorldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
-          queueStrokeForBroadcast(lastWorldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
           lastWorldPos = worldPos;
         }
       }
@@ -820,7 +770,6 @@
       isDraggingToken = false;
       isResizingToken = false;
       isDrawing = false;
-      flushStrokes();
       if (isSpacePressed) canvas.style.cursor = 'grab';
     });
 
@@ -835,27 +784,7 @@
       requestRender();
     }
 
-    function queueStrokeForBroadcast(from, to, tool, color, size) {
-      if (!isHost) return;
-      strokeBatch.push({ from: [Math.round(from.x), Math.round(from.y)], to: [Math.round(to.x), Math.round(to.y)], tool, color, size });
-      if (!strokeTimer) {
-        strokeTimer = setTimeout(flushStrokes, 35);
-      }
-    }
-
-    function flushStrokes() {
-      if (strokeTimer) {
-        clearTimeout(strokeTimer);
-        strokeTimer = null;
-      }
-      if (strokeBatch.length > 0) {
-        sendNetworkEvent('STROKE_BATCH', { batch: strokeBatch });
-        strokeBatch = [];
-      }
-    }
-
     function setTool(t) {
-      if (!isHost) return;
       currentTool = t;
       [btnSelect, btnBrush, btnEraser].forEach(b => b.classList.remove('active'));
       if (t === 'select') btnSelect.classList.add('active');
@@ -877,7 +806,6 @@
         isSpacePressed = true;
         canvas.style.cursor = 'grab';
       }
-      if (!isHost) return;
 
       if (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М') setTool('select');
       if (e.key === 'b' || e.key === 'B' || e.key === 'и' || e.key === 'И') setTool('brush');
@@ -887,7 +815,6 @@
         tokens = tokens.filter(t => t !== selectedToken);
         selectedToken = null;
         requestRender();
-        broadcastTokens();
       }
     });
 
@@ -902,14 +829,12 @@
       showGrid = !showGrid;
       btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
       requestRender();
-      if (isHost) sendNetworkEvent('GRID_TOGGLE', { showGrid });
     });
 
     btnClearDrawings.addEventListener('click', () => {
       if (confirm('Стереть все рисунки со свитка? (Изображения останутся)')) {
         strokes = [];
         requestRender();
-        if (isHost) sendNetworkEvent('CLEAR_DRAWINGS', {});
       }
     });
 
@@ -936,39 +861,14 @@
         if (!file.type.startsWith('image/')) continue;
         const reader = new FileReader();
         reader.onload = (event) => {
-          compressImage(event.target.result, 800, 0.72, (compressedSrc) => {
-            const assetId = registerImageAsset(compressedSrc);
-            addToStorage(assetId, compressedSrc);
-            if (isHost) sendNetworkEvent('NEW_ASSET', { assetId, src: compressedSrc });
-          });
+          const src = event.target.result;
+          const assetId = registerImageAsset(src);
+          addToStorage(assetId, src);
         };
         reader.readAsDataURL(file);
       }
       fileInput.value = '';
     });
-
-    function compressImage(src, maxDim, quality, callback) {
-      const img = new Image();
-      img.onload = () => {
-        let w = img.width;
-        let h = img.height;
-        if (w > maxDim || h > maxDim) {
-          if (w > h) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          } else {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
-        }
-        const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
-        c.getContext('2d').drawImage(img, 0, 0, w, h);
-        callback(c.toDataURL('image/jpeg', quality));
-      };
-      img.src = src;
-    }
 
     function addToStorage(assetId, src) {
       if (!storageImages.some(s => s.assetId === assetId)) {
@@ -1016,12 +916,10 @@
       selectedToken = token;
       setTool('select');
       requestRender();
-      if (isHost) broadcastTokens();
     }
 
-    wrapper.addEventListener('dragover', (e) => { if (isHost) e.preventDefault(); });
+    wrapper.addEventListener('dragover', (e) => { e.preventDefault(); });
     wrapper.addEventListener('drop', (e) => {
-      if (!isHost) return;
       e.preventDefault();
       const raw = e.dataTransfer.getData('text/plain');
       const rect = canvas.getBoundingClientRect();
@@ -1034,214 +932,17 @@
         if (file.type.startsWith('image/')) {
           const reader = new FileReader();
           reader.onload = (ev) => {
-            compressImage(ev.target.result, 800, 0.72, (cSrc) => {
-              const assetId = registerImageAsset(cSrc);
-              addToStorage(assetId, cSrc);
-              createImageObject(assetId, dropWorld.x - 60, dropWorld.y - 60);
-              if (isHost) sendNetworkEvent('NEW_ASSET', { assetId, src: cSrc });
-            });
+            const src = ev.target.result;
+            const assetId = registerImageAsset(src);
+            addToStorage(assetId, src);
+            createImageObject(assetId, dropWorld.x - 60, dropWorld.y - 60);
           };
           reader.readAsDataURL(file);
         }
       }
     });
 
-    // ========================================================
-    // НАДЕЖНАЯ СЕТЕВАЯ СИНХРОНИЗАЦИЯ ЧЕРЕЗ PIESOCKET WEBSOCKET
-    // ========================================================
-
-    function sendNetworkEvent(action, payload) {
-      if (currentChannel) {
-        try {
-          currentChannel.publish(action, payload);
-        } catch (e) {
-          console.error("Publish error:", e);
-        }
-      }
-    }
-
-    let tokenThrottler = null;
-    function broadcastTokensThrottled() {
-      if (!tokenThrottler) {
-        tokenThrottler = setTimeout(() => {
-          broadcastTokens();
-          tokenThrottler = null;
-        }, 35);
-      }
-    }
-
-    function broadcastTokens() {
-      const lightTokens = tokens.map(t => ({
-        id: t.id,
-        assetId: t.assetId,
-        x: t.x,
-        y: t.y,
-        width: t.width,
-        height: t.height
-      }));
-      sendNetworkEvent('TOKENS_UPDATE', { tokens: lightTokens });
-    }
-
-    function sendFullStateToSpectators() {
-      const assetsList = [];
-      imageAssetCache.forEach((img, assetId) => {
-        assetsList.push({ assetId, src: img.src });
-      });
-
-      const payload = {
-        showGrid: showGrid,
-        strokes: strokes,
-        assets: assetsList,
-        tokens: tokens.map(t => ({
-          id: t.id,
-          assetId: t.assetId,
-          x: t.x,
-          y: t.y,
-          width: t.width,
-          height: t.height
-        }))
-      };
-
-      sendNetworkEvent('SYNC_RESPONSE', payload);
-    }
-
-    function connectToRoom(roomId, onReady) {
-      netStatus.style.display = 'inline-flex';
-      netStatus.innerHTML = `⏳ Подключение...`;
-
-      // Бесплатный публичный кластер WebSocket PieSocket
-      pieSocket = new PieSocket.default({
-        clusterId: "free.blr2",
-        apiKey: "d3v_demo_key_dnd_room"
-      });
-
-      currentChannel = pieSocket.subscribe(roomId);
-
-      currentChannel.listen("open", () => {
-        if (onReady) onReady();
-      });
-
-      // Слушатели событий
-      currentChannel.listen("SYNC_REQUEST", () => {
-        if (isHost) {
-          activeSpectators.add(Math.random());
-          updateSpectatorBadge();
-          sendFullStateToSpectators();
-        }
-      });
-
-      currentChannel.listen("SYNC_RESPONSE", (data) => {
-        if (!isHost) {
-          applyFullState(data);
-          netStatus.innerHTML = `🟢 <b>Онлайн (Трансляция)</b>`;
-        }
-      });
-
-      currentChannel.listen("NEW_ASSET", (data) => {
-        if (!imageAssetCache.has(data.assetId)) {
-          registerImageAsset(data.src);
-          requestRender();
-        }
-      });
-
-      currentChannel.listen("STROKE_BATCH", (data) => {
-        if (!isHost && data.batch) {
-          for (let i = 0; i < data.batch.length; i++) {
-            strokes.push(data.batch[i]);
-          }
-          requestRender();
-        }
-      });
-
-      currentChannel.listen("TOKENS_UPDATE", (data) => {
-        if (!isHost && data.tokens) {
-          tokens = data.tokens;
-          requestRender();
-        }
-      });
-
-      currentChannel.listen("GRID_TOGGLE", (data) => {
-        if (!isHost) {
-          showGrid = data.showGrid;
-          btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
-          requestRender();
-        }
-      });
-
-      currentChannel.listen("CLEAR_DRAWINGS", () => {
-        if (!isHost) {
-          strokes = [];
-          requestRender();
-        }
-      });
-    }
-
-    function updateSpectatorBadge() {
-      netStatus.innerHTML = `🟢 Мастер (Зрителей: <b>${activeSpectators.size}</b>)`;
-    }
-
-    function initHostMode() {
-      isHost = true;
-      document.body.classList.remove('spectator-mode');
-      netStatus.style.display = 'inline-flex';
-      netStatus.innerHTML = `👑 Мастер: <b>Одиночная игра</b>`;
-
-      btnShareLink.addEventListener('click', () => {
-        if (!currentRoomId) {
-          currentRoomId = 'room_' + Math.random().toString(36).substr(2, 8);
-          btnShareLink.textContent = '⏳ Создание...';
-
-          connectToRoom(currentRoomId, () => {
-            const shareUrl = window.location.href.split('#')[0] + '#' + currentRoomId;
-            navigator.clipboard.writeText(shareUrl).then(() => {
-              alert('🔗 Ссылка скопирована!\n\nОтправьте её игрокам — теперь всё передаётся без задержек и застываний.');
-            }).catch(() => {
-              prompt('Скопируйте эту ссылку для зрителей:', shareUrl);
-            });
-
-            btnShareLink.textContent = '🔗 Ссылка готова';
-            updateSpectatorBadge();
-          });
-        } else {
-          const shareUrl = window.location.href.split('#')[0] + '#' + currentRoomId;
-          navigator.clipboard.writeText(shareUrl).then(() => {
-            alert('🔗 Ссылка повторно скопирована в буфер обмена!');
-          });
-        }
-      });
-    }
-
-    function initSpectatorMode(roomId) {
-      isHost = false;
-      currentRoomId = roomId;
-      document.body.classList.add('spectator-mode');
-      btnShareLink.style.display = 'none';
-      roleHint.innerHTML = `👁️ <b>Режим зрителя:</b> редактирует Мастер`;
-
-      connectToRoom(roomId, () => {
-        netStatus.innerHTML = `🔄 <b>Загрузка карты мастера...</b>`;
-        // Запрашиваем состояние у хоста
-        sendNetworkEvent('SYNC_REQUEST', { spectatorId: clientId });
-      });
-    }
-
-    function applyFullState(data) {
-      showGrid = data.showGrid ?? true;
-      btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
-
-      strokes = data.strokes || [];
-
-      if (Array.isArray(data.assets)) {
-        data.assets.forEach(a => {
-          registerImageAsset(a.src);
-        });
-      }
-
-      tokens = data.tokens || [];
-      requestRender();
-    }
-
-    // Сохранение / загрузка .dnd файлов
+    // Сохранение и загрузка .dnd
     btnSaveProject.addEventListener('click', () => {
       const assetsList = [];
       imageAssetCache.forEach((img, assetId) => {
@@ -1249,7 +950,7 @@
       });
 
       const session = {
-        version: "5.0",
+        version: "7.0",
         camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
         showGrid: showGrid,
         storageImages: storageImages,
@@ -1291,10 +992,6 @@
           showGrid = data.showGrid ?? true;
 
           requestRender();
-
-          if (isHost && currentRoomId) {
-            sendFullStateToSpectators();
-          }
           alert('Свиток успешно загружен!');
         } catch (err) {
           alert('Ошибка чтения файла сохранения!');
@@ -1306,13 +1003,6 @@
 
     resize();
     requestRender();
-
-    const hash = window.location.hash.substring(1);
-    if (hash && hash.startsWith('room_')) {
-      initSpectatorMode(hash);
-    } else {
-      initHostMode();
-    }
   </script>
 </body>
 </html>
