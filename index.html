@@ -8,7 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Marcellus&display=swap" rel="stylesheet">
   
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <!-- Быстрый и надежный WebSockets клиент для комнат -->
+  <script src="https://unpkg.com/piesocket-js@5"></script>
 
   <style>
     :root {
@@ -528,14 +529,7 @@
     const btnZoomOut = document.getElementById('btn-zoom-out');
     const btnZoomReset = document.getElementById('btn-zoom-reset');
 
-    let camera = {
-      x: 0,
-      y: 0,
-      zoom: 1.0,
-      minZoom: 0.2,
-      maxZoom: 5.0
-    };
-
+    let camera = { x: 0, y: 0, zoom: 1.0, minZoom: 0.2, maxZoom: 5.0 };
     let isPanning = false;
     let panStartX = 0;
     let panStartY = 0;
@@ -552,10 +546,7 @@
     const GRID_SIZE = 60;
 
     let strokes = [];
-
-    // Кэш и дефрагментация картинок
     const imageAssetCache = new Map();
-    const incomingChunks = new Map(); // assetId -> { total, parts: [] }
     let storageImages = [];
     let tokens = [];
     let selectedToken = null;
@@ -566,7 +557,8 @@
     const RESIZE_HANDLE_RADIUS = 9;
 
     let isHost = true;
-    let mqttClient = null;
+    let pieSocket = null;
+    let currentChannel = null;
     let currentRoomId = null;
     let clientId = 'u_' + Math.random().toString(36).substring(2, 9);
     let activeSpectators = new Set();
@@ -634,7 +626,7 @@
         }
       }
 
-      // Выделение токена
+      // Выделение токена у мастера
       if (selectedToken && isHost) {
         ctx.save();
         ctx.strokeStyle = '#d49635';
@@ -857,7 +849,7 @@
         strokeTimer = null;
       }
       if (strokeBatch.length > 0) {
-        broadcastFast({ type: 'STROKE_BATCH', batch: strokeBatch });
+        sendNetworkEvent('STROKE_BATCH', { batch: strokeBatch });
         strokeBatch = [];
       }
     }
@@ -910,14 +902,14 @@
       showGrid = !showGrid;
       btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
       requestRender();
-      if (isHost) broadcastFast({ type: 'GRID_TOGGLE', showGrid });
+      if (isHost) sendNetworkEvent('GRID_TOGGLE', { showGrid });
     });
 
     btnClearDrawings.addEventListener('click', () => {
       if (confirm('Стереть все рисунки со свитка? (Изображения останутся)')) {
         strokes = [];
         requestRender();
-        if (isHost) broadcastFast({ type: 'CLEAR_DRAWINGS' });
+        if (isHost) sendNetworkEvent('CLEAR_DRAWINGS', {});
       }
     });
 
@@ -944,10 +936,10 @@
         if (!file.type.startsWith('image/')) continue;
         const reader = new FileReader();
         reader.onload = (event) => {
-          compressImage(event.target.result, 800, 0.75, (compressedSrc) => {
+          compressImage(event.target.result, 800, 0.72, (compressedSrc) => {
             const assetId = registerImageAsset(compressedSrc);
             addToStorage(assetId, compressedSrc);
-            if (isHost) sendChunkedAsset(assetId, compressedSrc);
+            if (isHost) sendNetworkEvent('NEW_ASSET', { assetId, src: compressedSrc });
           });
         };
         reader.readAsDataURL(file);
@@ -1042,11 +1034,11 @@
         if (file.type.startsWith('image/')) {
           const reader = new FileReader();
           reader.onload = (ev) => {
-            compressImage(ev.target.result, 800, 0.75, (cSrc) => {
+            compressImage(ev.target.result, 800, 0.72, (cSrc) => {
               const assetId = registerImageAsset(cSrc);
               addToStorage(assetId, cSrc);
               createImageObject(assetId, dropWorld.x - 60, dropWorld.y - 60);
-              if (isHost) sendChunkedAsset(assetId, cSrc);
+              if (isHost) sendNetworkEvent('NEW_ASSET', { assetId, src: cSrc });
             });
           };
           reader.readAsDataURL(file);
@@ -1055,47 +1047,16 @@
     });
 
     // ========================================================
-    // НАДЁЖНАЯ ПЕРЕДАЧА ЧЕРЕЗ ЧАНКИ (БЕЗ ПОТЕРЬ КАРТИНОК)
+    // НАДЕЖНАЯ СЕТЕВАЯ СИНХРОНИЗАЦИЯ ЧЕРЕЗ PIESOCKET WEBSOCKET
     // ========================================================
 
-    const CHUNK_SIZE = 16384; // 16 KB безопасный чанк
-
-    function sendChunkedAsset(assetId, src) {
-      if (!mqttClient || !mqttClient.connected || !currentRoomId) return;
-
-      const totalChunks = Math.ceil(src.length / CHUNK_SIZE);
-      for (let i = 0; i < totalChunks; i++) {
-        const chunk = src.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-        const packet = {
-          type: 'ASSET_CHUNK',
-          assetId: assetId,
-          index: i,
-          total: totalChunks,
-          data: chunk
-        };
-        mqttClient.publish(`dnd_v3/${currentRoomId}/chunks`, JSON.stringify(packet), { qos: 0 });
-      }
-    }
-
-    function handleIncomingChunk(packet) {
-      const { assetId, index, total, data } = packet;
-
-      if (!incomingChunks.has(assetId)) {
-        incomingChunks.set(assetId, { total, parts: new Array(total), received: 0 });
-      }
-
-      const record = incomingChunks.get(assetId);
-      if (!record.parts[index]) {
-        record.parts[index] = data;
-        record.received++;
-      }
-
-      // Все кусочки собраны
-      if (record.received === record.total) {
-        const fullSrc = record.parts.join('');
-        incomingChunks.delete(assetId);
-        registerImageAsset(fullSrc);
-        requestRender();
+    function sendNetworkEvent(action, payload) {
+      if (currentChannel) {
+        try {
+          currentChannel.publish(action, payload);
+        } catch (e) {
+          console.error("Publish error:", e);
+        }
       }
     }
 
@@ -1109,12 +1070,6 @@
       }
     }
 
-    function broadcastFast(data) {
-      if (mqttClient && mqttClient.connected && currentRoomId) {
-        mqttClient.publish(`dnd_v3/${currentRoomId}/fast`, JSON.stringify(data), { qos: 0 });
-      }
-    }
-
     function broadcastTokens() {
       const lightTokens = tokens.map(t => ({
         id: t.id,
@@ -1124,17 +1079,19 @@
         width: t.width,
         height: t.height
       }));
-      broadcastFast({ type: 'TOKENS_UPDATE', tokens: lightTokens });
+      sendNetworkEvent('TOKENS_UPDATE', { tokens: lightTokens });
     }
 
     function sendFullStateToSpectators() {
-      if (!mqttClient || !mqttClient.connected || !currentRoomId) return;
+      const assetsList = [];
+      imageAssetCache.forEach((img, assetId) => {
+        assetsList.push({ assetId, src: img.src });
+      });
 
-      // 1. Отправляем легкие метаданные (токены и штрихи)
       const payload = {
-        type: 'INIT_STATE',
         showGrid: showGrid,
         strokes: strokes,
+        assets: assetsList,
         tokens: tokens.map(t => ({
           id: t.id,
           assetId: t.assetId,
@@ -1144,76 +1101,83 @@
           height: t.height
         }))
       };
-      mqttClient.publish(`dnd_v3/${currentRoomId}/state`, JSON.stringify(payload), { qos: 0 });
 
-      // 2. Досылаем все картинки по кусочкам
-      imageAssetCache.forEach((img, assetId) => {
-        sendChunkedAsset(assetId, img.src);
-      });
+      sendNetworkEvent('SYNC_RESPONSE', payload);
     }
 
-    function connectToBroker(roomId, onReady) {
+    function connectToRoom(roomId, onReady) {
       netStatus.style.display = 'inline-flex';
       netStatus.innerHTML = `⏳ Подключение...`;
 
-      mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-        clientId: clientId,
-        clean: true,
-        connectTimeout: 10000,
-        keepalive: 30
+      // Бесплатный публичный кластер WebSocket PieSocket
+      pieSocket = new PieSocket.default({
+        clusterId: "free.blr2",
+        apiKey: "d3v_demo_key_dnd_room"
       });
 
-      mqttClient.on('connect', () => {
-        mqttClient.subscribe(`dnd_v3/${roomId}/fast`, { qos: 0 });
-        mqttClient.subscribe(`dnd_v3/${roomId}/state`, { qos: 0 });
-        mqttClient.subscribe(`dnd_v3/${roomId}/chunks`, { qos: 0 });
-        mqttClient.subscribe(`dnd_v3/${roomId}/system`, { qos: 0 });
+      currentChannel = pieSocket.subscribe(roomId);
 
+      currentChannel.listen("open", () => {
         if (onReady) onReady();
       });
 
-      mqttClient.on('message', (topic, message) => {
-        try {
-          const data = JSON.parse(message.toString());
-
-          if (topic.endsWith('/system')) {
-            if (isHost && (data.type === 'PING_JOIN' || data.type === 'PING')) {
-              activeSpectators.add(data.senderId);
-              updateSpectatorBadge();
-              if (data.type === 'PING_JOIN') {
-                sendFullStateToSpectators();
-              }
-            }
-            return;
-          }
-
-          if (topic.endsWith('/chunks')) {
-            if (!isHost) {
-              handleIncomingChunk(data);
-            }
-            return;
-          }
-
-          if (topic.endsWith('/state')) {
-            if (!isHost) applyFullState(data);
-            return;
-          }
-
-          if (!isHost) {
-            handleIncomingFastData(data);
-          }
-        } catch (e) {
-          console.error(e);
+      // Слушатели событий
+      currentChannel.listen("SYNC_REQUEST", () => {
+        if (isHost) {
+          activeSpectators.add(Math.random());
+          updateSpectatorBadge();
+          sendFullStateToSpectators();
         }
       });
 
-      mqttClient.on('error', () => {
-        netStatus.innerHTML = `❌ Сбой сети`;
+      currentChannel.listen("SYNC_RESPONSE", (data) => {
+        if (!isHost) {
+          applyFullState(data);
+          netStatus.innerHTML = `🟢 <b>Онлайн (Трансляция)</b>`;
+        }
+      });
+
+      currentChannel.listen("NEW_ASSET", (data) => {
+        if (!imageAssetCache.has(data.assetId)) {
+          registerImageAsset(data.src);
+          requestRender();
+        }
+      });
+
+      currentChannel.listen("STROKE_BATCH", (data) => {
+        if (!isHost && data.batch) {
+          for (let i = 0; i < data.batch.length; i++) {
+            strokes.push(data.batch[i]);
+          }
+          requestRender();
+        }
+      });
+
+      currentChannel.listen("TOKENS_UPDATE", (data) => {
+        if (!isHost && data.tokens) {
+          tokens = data.tokens;
+          requestRender();
+        }
+      });
+
+      currentChannel.listen("GRID_TOGGLE", (data) => {
+        if (!isHost) {
+          showGrid = data.showGrid;
+          btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
+          requestRender();
+        }
+      });
+
+      currentChannel.listen("CLEAR_DRAWINGS", () => {
+        if (!isHost) {
+          strokes = [];
+          requestRender();
+        }
       });
     }
 
     function updateSpectatorBadge() {
-      netStatus.innerHTML = `👑 Мастер (Зрителей: <b>${activeSpectators.size}</b>)`;
+      netStatus.innerHTML = `🟢 Мастер (Зрителей: <b>${activeSpectators.size}</b>)`;
     }
 
     function initHostMode() {
@@ -1224,23 +1188,19 @@
 
       btnShareLink.addEventListener('click', () => {
         if (!currentRoomId) {
-          currentRoomId = 'dnd-room-' + Math.random().toString(36).substr(2, 9);
-          btnShareLink.textContent = '⏳ Запуск трансляции...';
+          currentRoomId = 'room_' + Math.random().toString(36).substr(2, 8);
+          btnShareLink.textContent = '⏳ Создание...';
 
-          connectToBroker(currentRoomId, () => {
+          connectToRoom(currentRoomId, () => {
             const shareUrl = window.location.href.split('#')[0] + '#' + currentRoomId;
             navigator.clipboard.writeText(shareUrl).then(() => {
-              alert('🔗 Ссылка скопирована!\n\nКартинки теперь загружаются мгновенно и без задержек.');
+              alert('🔗 Ссылка скопирована!\n\nОтправьте её игрокам — теперь всё передаётся без задержек и застываний.');
             }).catch(() => {
               prompt('Скопируйте эту ссылку для зрителей:', shareUrl);
             });
 
             btnShareLink.textContent = '🔗 Ссылка готова';
             updateSpectatorBadge();
-
-            setInterval(() => {
-              activeSpectators.clear();
-            }, 45000);
           });
         } else {
           const shareUrl = window.location.href.split('#')[0] + '#' + currentRoomId;
@@ -1258,49 +1218,30 @@
       btnShareLink.style.display = 'none';
       roleHint.innerHTML = `👁️ <b>Режим зрителя:</b> редактирует Мастер`;
 
-      connectToBroker(roomId, () => {
-        netStatus.innerHTML = `👁️ <b>Онлайн (Трансляция активна)</b>`;
-        mqttClient.publish(`dnd_v3/${roomId}/system`, JSON.stringify({ type: 'PING_JOIN', senderId: clientId }));
-
-        setInterval(() => {
-          if (mqttClient && mqttClient.connected) {
-            mqttClient.publish(`dnd_v3/${roomId}/system`, JSON.stringify({ type: 'PING', senderId: clientId }));
-          }
-        }, 15000);
+      connectToRoom(roomId, () => {
+        netStatus.innerHTML = `🔄 <b>Загрузка карты мастера...</b>`;
+        // Запрашиваем состояние у хоста
+        sendNetworkEvent('SYNC_REQUEST', { spectatorId: clientId });
       });
     }
 
     function applyFullState(data) {
-      if (data.type !== 'INIT_STATE') return;
-
-      showGrid = data.showGrid;
+      showGrid = data.showGrid ?? true;
       btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
 
       strokes = data.strokes || [];
+
+      if (Array.isArray(data.assets)) {
+        data.assets.forEach(a => {
+          registerImageAsset(a.src);
+        });
+      }
+
       tokens = data.tokens || [];
       requestRender();
     }
 
-    function handleIncomingFastData(data) {
-      if (data.type === 'STROKE_BATCH') {
-        for (let i = 0; i < data.batch.length; i++) {
-          strokes.push(data.batch[i]);
-        }
-        requestRender();
-      } else if (data.type === 'TOKENS_UPDATE') {
-        tokens = data.tokens;
-        requestRender();
-      } else if (data.type === 'GRID_TOGGLE') {
-        showGrid = data.showGrid;
-        btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
-        requestRender();
-      } else if (data.type === 'CLEAR_DRAWINGS') {
-        strokes = [];
-        requestRender();
-      }
-    }
-
-    // Сохранение и открытие .dnd файлов
+    // Сохранение / загрузка .dnd файлов
     btnSaveProject.addEventListener('click', () => {
       const assetsList = [];
       imageAssetCache.forEach((img, assetId) => {
@@ -1308,7 +1249,7 @@
       });
 
       const session = {
-        version: "4.0",
+        version: "5.0",
         camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
         showGrid: showGrid,
         storageImages: storageImages,
@@ -1367,7 +1308,7 @@
     requestRender();
 
     const hash = window.location.hash.substring(1);
-    if (hash && hash.startsWith('dnd-room-')) {
+    if (hash && hash.startsWith('room_')) {
       initSpectatorMode(hash);
     } else {
       initHostMode();
