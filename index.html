@@ -7,8 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Marcellus&display=swap" rel="stylesheet">
-  <!-- Бесплатная библиотека WebRTC P2P-соединений -->
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  
+  <!-- Надёжный протокол связи реального времени (MQTT через Secure WebSocket) -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <style>
     :root {
@@ -36,7 +37,6 @@
       overflow: hidden;
     }
 
-    /* ВЕРХНЯЯ КОВАНАЯ ПАНЕЛЬ */
     header {
       height: 52px;
       background: linear-gradient(180deg, #2b2118 0%, #18120d 70%, #0c0806 100%);
@@ -55,7 +55,6 @@
       gap: 12px;
     }
 
-    /* ЩИТ-ЛОГОТИП */
     .logo-shield {
       width: 36px;
       height: 44px;
@@ -199,7 +198,6 @@
       color: var(--gold-text);
     }
 
-    /* СЦЕНА */
     .dungeon-scene {
       flex: 1;
       position: relative;
@@ -214,7 +212,6 @@
       background-size: cover;
     }
 
-    /* БОКОВАЯ КОЛОНКА */
     .sidebar-scroll {
       width: 240px;
       height: 100%;
@@ -226,10 +223,8 @@
       box-shadow: inset 0 0 20px rgba(0,0,0,0.9), 0 6px 20px rgba(0,0,0,0.8);
       position: relative;
       z-index: 10;
-      transition: width 0.3s, opacity 0.3s;
     }
 
-    /* Скрываем инвентарь для зрителя */
     body.spectator-mode .sidebar-scroll,
     body.spectator-mode .editor-only {
       display: none !important;
@@ -353,7 +348,6 @@
       background-image: radial-gradient(circle at 40% 25%, rgba(60, 255, 100, 0.3) 0%, transparent 40%);
     }
 
-    /* ЦЕНТРАЛЬНЫЙ СТОЛ */
     .scroll-table-container {
       flex: 1;
       height: 100%;
@@ -417,7 +411,6 @@
 </head>
 <body>
 
-  <!-- Верхняя панель -->
   <header>
     <div class="title-box">
       <div class="logo-shield" title="Крокодилы и Канализации">
@@ -448,7 +441,6 @@
     </div>
 
     <div class="toolbar">
-      <!-- Инструменты редактирования (только для хоста) -->
       <button class="btn active editor-only" id="tool-select" title="Горячая клавиша: V">✋ Перемещение</button>
       <button class="btn editor-only" id="tool-brush" title="Горячая клавиша: B">🖌️ Кисть</button>
       <button class="btn editor-only" id="tool-eraser" title="Горячая клавиша: E">🧹 Ластик</button>
@@ -463,7 +455,6 @@
         <input type="range" id="brush-size" min="2" max="60" value="6">
       </div>
 
-      <!-- Зум (доступен и зрителям, и хосту) -->
       <div class="zoom-box">
         <button class="btn" id="btn-zoom-out" style="padding:2px 6px;">-</button>
         <span id="zoom-level">100%</span>
@@ -478,13 +469,11 @@
       <button class="btn editor-only" id="btn-load-trigger" title="Загрузить из файла">📂 Загрузить</button>
       <input type="file" id="save-file-input" accept=".dnd,.json">
 
-      <!-- Кнопка трансляции стола и статус -->
       <button class="btn btn-share" id="btn-share-link">🔗 Поделиться столом</button>
       <div class="status-badge" id="net-status" style="display: none;"></div>
     </div>
   </header>
 
-  <!-- Сцена -->
   <main class="dungeon-scene">
     <aside class="sidebar-scroll">
       <div class="scroll-head">Изображения</div>
@@ -558,7 +547,6 @@
     let panStartY = 0;
     let isSpacePressed = false;
 
-    // Режимы
     let currentTool = 'select';
     let isDrawing = false;
     let lastWorldPos = { x: 0, y: 0 };
@@ -574,11 +562,10 @@
     let tokenOffsetY = 0;
     const RESIZE_HANDLE_RADIUS = 9;
 
-    // СЕТЕВАЯ ЧАСТЬ (WEBRTC)
+    // СЕТЕВОЕ СОСТОЯНИЕ
     let isHost = true;
-    let peer = null;
-    let connections = []; // Подключённые зрители (если хост)
-    let hostConnection = null; // Соединение с хостом (если зритель)
+    let mqttClient = null;
+    let currentRoomId = null;
 
     function screenToWorld(sx, sy) {
       return {
@@ -595,7 +582,6 @@
     }
     window.addEventListener('resize', resize);
 
-    // --- ОТРИСОВКА ---
     function render() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -658,7 +644,6 @@
       ctx.stroke();
     }
 
-    // --- ЗУМ И ПАНОРАМА ---
     function zoomAtPoint(factor, sx, sy) {
       const newZoom = Math.min(camera.maxZoom, Math.max(camera.minZoom, camera.zoom * factor));
       if (newZoom === camera.zoom) return;
@@ -685,7 +670,6 @@
       render();
     });
 
-    // --- ОБРАБОТКА МЫШИ ---
     function isInResizeHandle(wx, wy, token) {
       if (!token) return false;
       const hx = token.x + token.width;
@@ -709,7 +693,6 @@
       const sy = e.clientY - rect.top;
       const worldPos = screenToWorld(sx, sy);
 
-      // Панорама стола доступна всем (в том числе зрителям)
       if (e.button === 1 || (e.button === 0 && isSpacePressed)) {
         isPanning = true;
         panStartX = e.clientX;
@@ -718,7 +701,7 @@
         return;
       }
 
-      if (e.button !== 0 || !isHost) return; // Зрители не могут редактировать
+      if (e.button !== 0 || !isHost) return;
 
       if (currentTool === 'select') {
         if (selectedToken && isInResizeHandle(worldPos.x, worldPos.y, selectedToken)) {
@@ -831,7 +814,6 @@
       render();
     }
 
-    // --- ИНСТРУМЕНТЫ И ХОТКЕИ ---
     function setTool(t) {
       if (!isHost) return;
       currentTool = t;
@@ -891,7 +873,6 @@
       }
     });
 
-    // --- ХРАНИЛИЩЕ ИЗОБРАЖЕНИЙ ---
     fileInput.addEventListener('change', (e) => {
       const files = e.target.files;
       for (const file of files) {
@@ -971,13 +952,14 @@
     });
 
     // ====================================================
-    // СИНХРОНИЗАЦИЯ В РЕАЛЬНОМ ВРЕМЕНИ (PEERJS / WEBRTC)
+    // НАДЁЖНАЯ СИНХРОНИЗАЦИЯ ЧЕРЕЗ WEBSOCKET (MQTT-BROKER)
     // ====================================================
 
     function broadcast(data) {
-      connections.forEach(conn => {
-        if (conn.open) conn.send(data);
-      });
+      if (mqttClient && mqttClient.connected && currentRoomId) {
+        const topic = `dnd_room/${currentRoomId}`;
+        mqttClient.publish(topic, JSON.stringify(data));
+      }
     }
 
     function broadcastStroke(from, to, tool, color, size) {
@@ -1012,52 +994,75 @@
       };
     }
 
-    // Режим Хоста (Мастера)
+    // Подключение к публичному защищённому WebSocket-брокеру EMQX
+    function connectToBroker(roomId, onReady) {
+      netStatus.style.display = 'inline-flex';
+      netStatus.innerHTML = `⏳ Подключение...`;
+
+      // Стабильный глобальный брокер через WSS (работает отовсюду и даже с file:///)
+      mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+        clientId: 'dnd_' + Math.random().toString(16).substring(2, 8),
+        keepalive: 30
+      });
+
+      mqttClient.on('connect', () => {
+        const topic = `dnd_room/${roomId}`;
+        mqttClient.subscribe(topic, { qos: 0 }, (err) => {
+          if (!err) {
+            if (onReady) onReady();
+          } else {
+            netStatus.innerHTML = `❌ Ошибка`;
+          }
+        });
+      });
+
+      mqttClient.on('message', (topic, message) => {
+        try {
+          const data = JSON.parse(message.toString());
+          // Если хост получил запрос на состояние от нового зрителя — отправляем снимок стола
+          if (isHost && data.type === 'REQUEST_STATE') {
+            broadcast(getFullStateSnapshot());
+            return;
+          }
+          // Если зритель — применяем действия хоста
+          if (!isHost) {
+            handleIncomingData(data);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      });
+
+      mqttClient.on('error', (err) => {
+        console.error('MQTT error:', err);
+        netStatus.innerHTML = `❌ Сбой сети`;
+      });
+    }
+
     function initHostMode() {
       isHost = true;
       document.body.classList.remove('spectator-mode');
       netStatus.style.display = 'inline-flex';
-      netStatus.innerHTML = `👑 Мастер: <b>Одиночная игра</b>`;
+      netStatus.innerHTML = `👑 Мастер: <b>Одиночный стол</b>`;
 
       btnShareLink.addEventListener('click', () => {
-        if (!peer) {
-          btnShareLink.textContent = '⏳ Создание комнаты...';
-          const hostId = 'dnd-room-' + Math.random().toString(36).substr(2, 9);
-          peer = new Peer(hostId);
+        if (!currentRoomId) {
+          currentRoomId = 'dnd-room-' + Math.random().toString(36).substr(2, 8);
+          btnShareLink.textContent = '⏳ Подключение...';
 
-          peer.on('open', (id) => {
-            const shareUrl = window.location.origin + window.location.pathname + '#' + id;
+          connectToBroker(currentRoomId, () => {
+            const shareUrl = window.location.href.split('#')[0] + '#' + currentRoomId;
             navigator.clipboard.writeText(shareUrl).then(() => {
-              alert('🔗 Ссылка на стол скопирована в буфер обмена!\nОтправьте её игрокам: они подключатся в режиме зрителя.');
+              alert('🔗 Ссылка скопирована!\nОтправьте её игрокам — они смогут смотреть партию онлайн.');
             }).catch(() => {
-              prompt('Скопируйте эту ссылку для игроков:', shareUrl);
+              prompt('Скопируйте эту ссылку для зрителей:', shareUrl);
             });
 
-            btnShareLink.textContent = '🔗 Ссылка скопирована';
-            netStatus.innerHTML = `👑 Мастер (Зрителей: 0)`;
-          });
-
-          peer.on('connection', (conn) => {
-            connections.push(conn);
-            conn.on('open', () => {
-              netStatus.innerHTML = `👑 Мастер (Зрителей: ${connections.filter(c => c.open).length})`;
-              // Отправляем новому зрителю полный снимок стола
-              conn.send(getFullStateSnapshot());
-            });
-
-            conn.on('close', () => {
-              connections = connections.filter(c => c !== conn);
-              netStatus.innerHTML = `👑 Мастер (Зрителей: ${connections.length})`;
-            });
-          });
-
-          peer.on('error', (err) => {
-            console.error('Peer error:', err);
-            alert('Ошибка подключения к серверу синхронизации. Проверьте интернет.');
-            btnShareLink.textContent = '🔗 Поделиться столом';
+            btnShareLink.textContent = '🔗 Ссылка готова';
+            netStatus.innerHTML = `👑 <b>Трансляция активна</b>`;
           });
         } else {
-          const shareUrl = window.location.origin + window.location.pathname + '#' + peer.id;
+          const shareUrl = window.location.href.split('#')[0] + '#' + currentRoomId;
           navigator.clipboard.writeText(shareUrl).then(() => {
             alert('🔗 Ссылка повторно скопирована в буфер обмена!');
           });
@@ -1065,42 +1070,20 @@
       });
     }
 
-    // Режим Зрителя (Игрока)
-    function initSpectatorMode(hostId) {
+    function initSpectatorMode(roomId) {
       isHost = false;
+      currentRoomId = roomId;
       document.body.classList.add('spectator-mode');
       btnShareLink.style.display = 'none';
-      netStatus.style.display = 'inline-flex';
-      netStatus.innerHTML = `🔄 Подключение к Мастеру...`;
       roleHint.innerHTML = `👁️ <b>Режим зрителя:</b> редактирует Мастер`;
 
-      peer = new Peer();
-
-      peer.on('open', () => {
-        hostConnection = peer.connect(hostId);
-
-        hostConnection.on('open', () => {
-          netStatus.innerHTML = `👁️ <b>Подключен к столу</b>`;
-        });
-
-        hostConnection.on('data', (data) => {
-          handleIncomingData(data);
-        });
-
-        hostConnection.on('close', () => {
-          netStatus.innerHTML = `❌ Мастер отключился`;
-          alert('Мастер завершил сессию стола.');
-        });
-      });
-
-      peer.on('error', (err) => {
-        console.error(err);
-        netStatus.innerHTML = `❌ Ошибка подключения`;
-        alert('Не удалось подключиться к столу. Возможно, комната уже закрыта или неверная ссылка.');
+      connectToBroker(roomId, () => {
+        netStatus.innerHTML = `👁️ <b>Подключен к столу</b>`;
+        // Запрашиваем актуальный вид поля у Мастера
+        broadcast({ type: 'REQUEST_STATE' });
       });
     }
 
-    // Обработка данных от хоста зрителем
     function handleIncomingData(data) {
       if (data.type === 'INIT_STATE') {
         showGrid = data.showGrid;
@@ -1174,7 +1157,7 @@
       }
     }
 
-    // Сохранение и загрузка файлов
+    // Сохранение и загрузка файла .dnd
     btnSaveProject.addEventListener('click', () => {
       const session = {
         version: "1.0",
@@ -1214,7 +1197,7 @@
           });
 
           if (isHost) broadcast(getFullStateSnapshot());
-          alert('Свиток загружен!');
+          alert('Свиток успешно загружен!');
         } catch (err) {
           alert('Ошибка при чтении файла сохранения!');
         }
@@ -1223,7 +1206,7 @@
       saveFileInput.value = '';
     });
 
-    // --- ОПРЕДЕЛЕНИЕ РОЛИ ПРИ СТАРТЕ ---
+    // Инициализация
     resize();
     camera.x = WORLD_SIZE / 2 - canvas.width / 2;
     camera.y = WORLD_SIZE / 2 - canvas.height / 2;
