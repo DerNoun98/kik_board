@@ -8,7 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Marcellus&display=swap" rel="stylesheet">
   
-  <!-- Надёжный протокол связи реального времени (MQTT через Secure WebSocket) -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <style>
@@ -148,6 +147,7 @@
       border-color: #8b6b23;
       background: linear-gradient(180deg, #574116 0%, #30220a 100%);
       color: #ffd782;
+      font-weight: bold;
     }
     .btn-share:hover {
       border-color: #ffd700;
@@ -157,14 +157,15 @@
 
     .status-badge {
       font-size: 0.75rem;
-      padding: 3px 8px;
+      padding: 3px 9px;
       border-radius: 4px;
-      background: rgba(0,0,0,0.6);
+      background: rgba(0,0,0,0.65);
       border: 1px solid #5d4633;
       color: #a4d492;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
+      font-family: 'Cinzel', serif;
     }
 
     .zoom-box {
@@ -495,7 +496,7 @@
     </section>
 
     <div class="instructions-card">
-      • <b>Зум:</b> Колёсико мыши<br>
+      • <b>Зум:</b> Колёсико мыши (независимый у каждого)<br>
       • <b>Панорама:</b> Колёсико или <b>Пробел + ЛКМ</b><br>
       <span id="role-hint">• <b>Изображения:</b> Перетаскивание инструментом «✋»</span>
     </div>
@@ -505,12 +506,6 @@
     const wrapper = document.getElementById('canvas-wrapper');
     const canvas = document.getElementById('viewport-canvas');
     const ctx = canvas.getContext('2d');
-
-    const drawBuffer = document.createElement('canvas');
-    const drawCtx = drawBuffer.getContext('2d');
-    const WORLD_SIZE = 8000;
-    drawBuffer.width = WORLD_SIZE;
-    drawBuffer.height = WORLD_SIZE;
 
     const fileInput = document.getElementById('file-input');
     const saveFileInput = document.getElementById('save-file-input');
@@ -533,13 +528,12 @@
     const btnZoomOut = document.getElementById('btn-zoom-out');
     const btnZoomReset = document.getElementById('btn-zoom-reset');
 
-    // Камера
     let camera = {
-      x: WORLD_SIZE / 2 - 400,
-      y: WORLD_SIZE / 2 - 300,
+      x: 0,
+      y: 0,
       zoom: 1.0,
-      minZoom: 0.25,
-      maxZoom: 4.5
+      minZoom: 0.2,
+      maxZoom: 5.0
     };
 
     let isPanning = false;
@@ -550,9 +544,18 @@
     let currentTool = 'select';
     let isDrawing = false;
     let lastWorldPos = { x: 0, y: 0 };
+    let strokeBatch = [];
+    let strokeTimer = null;
+    let renderRequested = false;
+
     let showGrid = true;
     const GRID_SIZE = 60;
 
+    let strokes = [];
+
+    // Кэш и дефрагментация картинок
+    const imageAssetCache = new Map();
+    const incomingChunks = new Map(); // assetId -> { total, parts: [] }
     let storageImages = [];
     let tokens = [];
     let selectedToken = null;
@@ -562,10 +565,11 @@
     let tokenOffsetY = 0;
     const RESIZE_HANDLE_RADIUS = 9;
 
-    // СЕТЕВОЕ СОСТОЯНИЕ
     let isHost = true;
     let mqttClient = null;
     let currentRoomId = null;
+    let clientId = 'u_' + Math.random().toString(36).substring(2, 9);
+    let activeSpectators = new Set();
 
     function screenToWorld(sx, sy) {
       return {
@@ -576,13 +580,23 @@
 
     function resize() {
       const rect = wrapper.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
-      render();
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        requestRender();
+      }
     }
     window.addEventListener('resize', resize);
 
-    function render() {
+    function requestRender() {
+      if (!renderRequested) {
+        renderRequested = true;
+        requestAnimationFrame(renderLoop);
+      }
+    }
+
+    function renderLoop() {
+      renderRequested = false;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       ctx.save();
@@ -591,14 +605,36 @@
 
       if (showGrid) drawGridInWorld();
 
-      ctx.drawImage(drawBuffer, 0, 0);
-
-      tokens.forEach(token => {
-        if (token.img && token.img.complete) {
-          ctx.drawImage(token.img, token.x, token.y, token.width, token.height);
+      // Штрихи кисти
+      for (let i = 0; i < strokes.length; i++) {
+        const s = strokes[i];
+        ctx.save();
+        ctx.lineWidth = s.size;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (s.tool === 'eraser') {
+          ctx.globalCompositeOperation = 'destination-out';
+        } else {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.strokeStyle = s.color;
         }
-      });
+        ctx.beginPath();
+        ctx.moveTo(s.from[0], s.from[1]);
+        ctx.lineTo(s.to[0], s.to[1]);
+        ctx.stroke();
+        ctx.restore();
+      }
 
+      // Токены
+      for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i];
+        const img = imageAssetCache.get(t.assetId);
+        if (img && img.complete && img.naturalWidth > 0) {
+          ctx.drawImage(img, t.x, t.y, t.width, t.height);
+        }
+      }
+
+      // Выделение токена
       if (selectedToken && isHost) {
         ctx.save();
         ctx.strokeStyle = '#d49635';
@@ -652,7 +688,7 @@
       camera.zoom = newZoom;
       camera.x = target.x - sx / camera.zoom;
       camera.y = target.y - sy / camera.zoom;
-      render();
+      requestRender();
     }
 
     wrapper.addEventListener('wheel', (e) => {
@@ -665,9 +701,9 @@
     btnZoomOut.addEventListener('click', () => zoomAtPoint(0.83, canvas.width / 2, canvas.height / 2));
     btnZoomReset.addEventListener('click', () => {
       camera.zoom = 1.0;
-      camera.x = WORLD_SIZE / 2 - canvas.width / 2;
-      camera.y = WORLD_SIZE / 2 - canvas.height / 2;
-      render();
+      camera.x = 0;
+      camera.y = 0;
+      requestRender();
     });
 
     function isInResizeHandle(wx, wy, token) {
@@ -722,12 +758,12 @@
         } else {
           selectedToken = null;
         }
-        render();
+        requestRender();
       } else {
         isDrawing = true;
         lastWorldPos = worldPos;
-        applyStroke(worldPos, worldPos, currentTool, colorPicker.value, sizePicker.value);
-        broadcastStroke(worldPos, worldPos, currentTool, colorPicker.value, sizePicker.value);
+        addStroke(worldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
+        queueStrokeForBroadcast(worldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
       }
     });
 
@@ -742,7 +778,7 @@
         camera.y -= (e.clientY - panStartY) / camera.zoom;
         panStartX = e.clientX;
         panStartY = e.clientY;
-        render();
+        requestRender();
         return;
       }
 
@@ -753,18 +789,18 @@
 
       if (currentTool === 'select') {
         if (isResizingToken && selectedToken) {
-          selectedToken.width = Math.max(25, worldPos.x - selectedToken.x);
-          selectedToken.height = Math.max(25, worldPos.y - selectedToken.y);
-          render();
-          broadcastTokens();
+          selectedToken.width = Math.max(25, Math.round(worldPos.x - selectedToken.x));
+          selectedToken.height = Math.max(25, Math.round(worldPos.y - selectedToken.y));
+          requestRender();
+          broadcastTokensThrottled();
           return;
         }
 
         if (isDraggingToken && selectedToken) {
-          selectedToken.x = worldPos.x - tokenOffsetX;
-          selectedToken.y = worldPos.y - tokenOffsetY;
-          render();
-          broadcastTokens();
+          selectedToken.x = Math.round(worldPos.x - tokenOffsetX);
+          selectedToken.y = Math.round(worldPos.y - tokenOffsetY);
+          requestRender();
+          broadcastTokensThrottled();
           return;
         }
 
@@ -780,8 +816,8 @@
       } else {
         canvas.style.cursor = 'crosshair';
         if (isDrawing) {
-          applyStroke(lastWorldPos, worldPos, currentTool, colorPicker.value, sizePicker.value);
-          broadcastStroke(lastWorldPos, worldPos, currentTool, colorPicker.value, sizePicker.value);
+          addStroke(lastWorldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
+          queueStrokeForBroadcast(lastWorldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
           lastWorldPos = worldPos;
         }
       }
@@ -792,26 +828,38 @@
       isDraggingToken = false;
       isResizingToken = false;
       isDrawing = false;
+      flushStrokes();
       if (isSpacePressed) canvas.style.cursor = 'grab';
     });
 
-    function applyStroke(from, to, tool, color, size) {
-      drawCtx.lineWidth = size;
-      drawCtx.lineCap = 'round';
-      drawCtx.lineJoin = 'round';
+    function addStroke(from, to, tool, color, size) {
+      strokes.push({
+        from: [Math.round(from.x), Math.round(from.y)],
+        to: [Math.round(to.x), Math.round(to.y)],
+        tool,
+        color,
+        size
+      });
+      requestRender();
+    }
 
-      if (tool === 'brush') {
-        drawCtx.globalCompositeOperation = 'source-over';
-        drawCtx.strokeStyle = color;
-      } else if (tool === 'eraser') {
-        drawCtx.globalCompositeOperation = 'destination-out';
+    function queueStrokeForBroadcast(from, to, tool, color, size) {
+      if (!isHost) return;
+      strokeBatch.push({ from: [Math.round(from.x), Math.round(from.y)], to: [Math.round(to.x), Math.round(to.y)], tool, color, size });
+      if (!strokeTimer) {
+        strokeTimer = setTimeout(flushStrokes, 35);
       }
+    }
 
-      drawCtx.beginPath();
-      drawCtx.moveTo(from.x, from.y);
-      drawCtx.lineTo(to.x, to.y);
-      drawCtx.stroke();
-      render();
+    function flushStrokes() {
+      if (strokeTimer) {
+        clearTimeout(strokeTimer);
+        strokeTimer = null;
+      }
+      if (strokeBatch.length > 0) {
+        broadcastFast({ type: 'STROKE_BATCH', batch: strokeBatch });
+        strokeBatch = [];
+      }
     }
 
     function setTool(t) {
@@ -824,7 +872,7 @@
 
       if (t !== 'select') {
         selectedToken = null;
-        render();
+        requestRender();
       }
     }
 
@@ -846,7 +894,7 @@
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedToken) {
         tokens = tokens.filter(t => t !== selectedToken);
         selectedToken = null;
-        render();
+        requestRender();
         broadcastTokens();
       }
     });
@@ -861,31 +909,79 @@
     btnGrid.addEventListener('click', () => {
       showGrid = !showGrid;
       btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
-      render();
-      if (isHost) broadcast({ type: 'GRID_TOGGLE', showGrid });
+      requestRender();
+      if (isHost) broadcastFast({ type: 'GRID_TOGGLE', showGrid });
     });
 
     btnClearDrawings.addEventListener('click', () => {
       if (confirm('Стереть все рисунки со свитка? (Изображения останутся)')) {
-        drawCtx.clearRect(0, 0, drawBuffer.width, drawBuffer.height);
-        render();
-        if (isHost) broadcast({ type: 'CLEAR_DRAWINGS' });
+        strokes = [];
+        requestRender();
+        if (isHost) broadcastFast({ type: 'CLEAR_DRAWINGS' });
       }
     });
+
+    function registerImageAsset(src) {
+      let hash = 0;
+      for (let i = 0; i < src.length; i++) {
+        hash = ((hash << 5) - hash) + src.charCodeAt(i);
+        hash |= 0;
+      }
+      const assetId = 'img_' + Math.abs(hash).toString(36);
+
+      if (!imageAssetCache.has(assetId)) {
+        const img = new Image();
+        img.onload = () => requestRender();
+        img.src = src;
+        imageAssetCache.set(assetId, img);
+      }
+      return assetId;
+    }
 
     fileInput.addEventListener('change', (e) => {
       const files = e.target.files;
       for (const file of files) {
         if (!file.type.startsWith('image/')) continue;
         const reader = new FileReader();
-        reader.onload = (event) => addToStorage(event.target.result);
+        reader.onload = (event) => {
+          compressImage(event.target.result, 800, 0.75, (compressedSrc) => {
+            const assetId = registerImageAsset(compressedSrc);
+            addToStorage(assetId, compressedSrc);
+            if (isHost) sendChunkedAsset(assetId, compressedSrc);
+          });
+        };
         reader.readAsDataURL(file);
       }
       fileInput.value = '';
     });
 
-    function addToStorage(src) {
-      if (!storageImages.includes(src)) storageImages.push(src);
+    function compressImage(src, maxDim, quality, callback) {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        callback(c.toDataURL('image/jpeg', quality));
+      };
+      img.src = src;
+    }
+
+    function addToStorage(assetId, src) {
+      if (!storageImages.some(s => s.assetId === assetId)) {
+        storageImages.push({ assetId, src });
+      }
 
       const item = document.createElement('div');
       item.classList.add('gallery-item');
@@ -900,14 +996,14 @@
       delBtn.title = 'Удалить';
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        storageImages = storageImages.filter(s => s !== src);
+        storageImages = storageImages.filter(s => s.assetId !== assetId);
         item.remove();
       });
 
-      item.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', src));
+      item.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', assetId));
       item.addEventListener('click', () => {
         const center = screenToWorld(canvas.width / 2, canvas.height / 2);
-        createImageObject(src, center.x - 60, center.y - 60);
+        createImageObject(assetId, center.x - 60, center.y - 60);
       });
 
       item.appendChild(img);
@@ -915,151 +1011,236 @@
       gallery.appendChild(item);
     }
 
-    function createImageObject(src, wx, wy, width = 120, height = 120) {
-      const img = new Image();
-      img.onload = () => {
-        const token = { id: 'tok_' + Date.now() + Math.random(), img, src, x: wx, y: wy, width, height };
-        tokens.push(token);
-        selectedToken = token;
-        setTool('select');
-        render();
-        if (isHost) broadcastTokens();
+    function createImageObject(assetId, wx, wy, width = 120, height = 120) {
+      const token = {
+        id: 't_' + Math.random().toString(36).substr(2, 9),
+        assetId: assetId,
+        x: Math.round(wx),
+        y: Math.round(wy),
+        width: Math.round(width),
+        height: Math.round(height)
       };
-      img.src = src;
+      tokens.push(token);
+      selectedToken = token;
+      setTool('select');
+      requestRender();
+      if (isHost) broadcastTokens();
     }
 
     wrapper.addEventListener('dragover', (e) => { if (isHost) e.preventDefault(); });
     wrapper.addEventListener('drop', (e) => {
       if (!isHost) return;
       e.preventDefault();
-      const src = e.dataTransfer.getData('text/plain');
+      const raw = e.dataTransfer.getData('text/plain');
       const rect = canvas.getBoundingClientRect();
       const dropWorld = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
 
-      if (src) {
-        createImageObject(src, dropWorld.x - 60, dropWorld.y - 60);
+      if (raw && imageAssetCache.has(raw)) {
+        createImageObject(raw, dropWorld.x - 60, dropWorld.y - 60);
       } else if (e.dataTransfer.files.length > 0) {
         const file = e.dataTransfer.files[0];
         if (file.type.startsWith('image/')) {
           const reader = new FileReader();
           reader.onload = (ev) => {
-            addToStorage(ev.target.result);
-            createImageObject(ev.target.result, dropWorld.x - 60, dropWorld.y - 60);
+            compressImage(ev.target.result, 800, 0.75, (cSrc) => {
+              const assetId = registerImageAsset(cSrc);
+              addToStorage(assetId, cSrc);
+              createImageObject(assetId, dropWorld.x - 60, dropWorld.y - 60);
+              if (isHost) sendChunkedAsset(assetId, cSrc);
+            });
           };
           reader.readAsDataURL(file);
         }
       }
     });
 
-    // ====================================================
-    // НАДЁЖНАЯ СИНХРОНИЗАЦИЯ ЧЕРЕЗ WEBSOCKET (MQTT-BROKER)
-    // ====================================================
+    // ========================================================
+    // НАДЁЖНАЯ ПЕРЕДАЧА ЧЕРЕЗ ЧАНКИ (БЕЗ ПОТЕРЬ КАРТИНОК)
+    // ========================================================
 
-    function broadcast(data) {
-      if (mqttClient && mqttClient.connected && currentRoomId) {
-        const topic = `dnd_room/${currentRoomId}`;
-        mqttClient.publish(topic, JSON.stringify(data));
+    const CHUNK_SIZE = 16384; // 16 KB безопасный чанк
+
+    function sendChunkedAsset(assetId, src) {
+      if (!mqttClient || !mqttClient.connected || !currentRoomId) return;
+
+      const totalChunks = Math.ceil(src.length / CHUNK_SIZE);
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = src.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        const packet = {
+          type: 'ASSET_CHUNK',
+          assetId: assetId,
+          index: i,
+          total: totalChunks,
+          data: chunk
+        };
+        mqttClient.publish(`dnd_v3/${currentRoomId}/chunks`, JSON.stringify(packet), { qos: 0 });
       }
     }
 
-    function broadcastStroke(from, to, tool, color, size) {
-      broadcast({ type: 'STROKE', from, to, tool, color, size });
+    function handleIncomingChunk(packet) {
+      const { assetId, index, total, data } = packet;
+
+      if (!incomingChunks.has(assetId)) {
+        incomingChunks.set(assetId, { total, parts: new Array(total), received: 0 });
+      }
+
+      const record = incomingChunks.get(assetId);
+      if (!record.parts[index]) {
+        record.parts[index] = data;
+        record.received++;
+      }
+
+      // Все кусочки собраны
+      if (record.received === record.total) {
+        const fullSrc = record.parts.join('');
+        incomingChunks.delete(assetId);
+        registerImageAsset(fullSrc);
+        requestRender();
+      }
+    }
+
+    let tokenThrottler = null;
+    function broadcastTokensThrottled() {
+      if (!tokenThrottler) {
+        tokenThrottler = setTimeout(() => {
+          broadcastTokens();
+          tokenThrottler = null;
+        }, 35);
+      }
+    }
+
+    function broadcastFast(data) {
+      if (mqttClient && mqttClient.connected && currentRoomId) {
+        mqttClient.publish(`dnd_v3/${currentRoomId}/fast`, JSON.stringify(data), { qos: 0 });
+      }
     }
 
     function broadcastTokens() {
-      const serializableTokens = tokens.map(t => ({
+      const lightTokens = tokens.map(t => ({
         id: t.id,
-        src: t.src || t.img.src,
+        assetId: t.assetId,
         x: t.x,
         y: t.y,
         width: t.width,
         height: t.height
       }));
-      broadcast({ type: 'TOKENS_UPDATE', tokens: serializableTokens });
+      broadcastFast({ type: 'TOKENS_UPDATE', tokens: lightTokens });
     }
 
-    function getFullStateSnapshot() {
-      return {
+    function sendFullStateToSpectators() {
+      if (!mqttClient || !mqttClient.connected || !currentRoomId) return;
+
+      // 1. Отправляем легкие метаданные (токены и штрихи)
+      const payload = {
         type: 'INIT_STATE',
         showGrid: showGrid,
-        drawingsDataUrl: drawBuffer.toDataURL('image/png'),
+        strokes: strokes,
         tokens: tokens.map(t => ({
           id: t.id,
-          src: t.src || t.img.src,
+          assetId: t.assetId,
           x: t.x,
           y: t.y,
           width: t.width,
           height: t.height
         }))
       };
+      mqttClient.publish(`dnd_v3/${currentRoomId}/state`, JSON.stringify(payload), { qos: 0 });
+
+      // 2. Досылаем все картинки по кусочкам
+      imageAssetCache.forEach((img, assetId) => {
+        sendChunkedAsset(assetId, img.src);
+      });
     }
 
-    // Подключение к публичному защищённому WebSocket-брокеру EMQX
     function connectToBroker(roomId, onReady) {
       netStatus.style.display = 'inline-flex';
       netStatus.innerHTML = `⏳ Подключение...`;
 
-      // Стабильный глобальный брокер через WSS (работает отовсюду и даже с file:///)
       mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-        clientId: 'dnd_' + Math.random().toString(16).substring(2, 8),
+        clientId: clientId,
+        clean: true,
+        connectTimeout: 10000,
         keepalive: 30
       });
 
       mqttClient.on('connect', () => {
-        const topic = `dnd_room/${roomId}`;
-        mqttClient.subscribe(topic, { qos: 0 }, (err) => {
-          if (!err) {
-            if (onReady) onReady();
-          } else {
-            netStatus.innerHTML = `❌ Ошибка`;
-          }
-        });
+        mqttClient.subscribe(`dnd_v3/${roomId}/fast`, { qos: 0 });
+        mqttClient.subscribe(`dnd_v3/${roomId}/state`, { qos: 0 });
+        mqttClient.subscribe(`dnd_v3/${roomId}/chunks`, { qos: 0 });
+        mqttClient.subscribe(`dnd_v3/${roomId}/system`, { qos: 0 });
+
+        if (onReady) onReady();
       });
 
       mqttClient.on('message', (topic, message) => {
         try {
           const data = JSON.parse(message.toString());
-          // Если хост получил запрос на состояние от нового зрителя — отправляем снимок стола
-          if (isHost && data.type === 'REQUEST_STATE') {
-            broadcast(getFullStateSnapshot());
+
+          if (topic.endsWith('/system')) {
+            if (isHost && (data.type === 'PING_JOIN' || data.type === 'PING')) {
+              activeSpectators.add(data.senderId);
+              updateSpectatorBadge();
+              if (data.type === 'PING_JOIN') {
+                sendFullStateToSpectators();
+              }
+            }
             return;
           }
-          // Если зритель — применяем действия хоста
+
+          if (topic.endsWith('/chunks')) {
+            if (!isHost) {
+              handleIncomingChunk(data);
+            }
+            return;
+          }
+
+          if (topic.endsWith('/state')) {
+            if (!isHost) applyFullState(data);
+            return;
+          }
+
           if (!isHost) {
-            handleIncomingData(data);
+            handleIncomingFastData(data);
           }
         } catch (e) {
           console.error(e);
         }
       });
 
-      mqttClient.on('error', (err) => {
-        console.error('MQTT error:', err);
+      mqttClient.on('error', () => {
         netStatus.innerHTML = `❌ Сбой сети`;
       });
+    }
+
+    function updateSpectatorBadge() {
+      netStatus.innerHTML = `👑 Мастер (Зрителей: <b>${activeSpectators.size}</b>)`;
     }
 
     function initHostMode() {
       isHost = true;
       document.body.classList.remove('spectator-mode');
       netStatus.style.display = 'inline-flex';
-      netStatus.innerHTML = `👑 Мастер: <b>Одиночный стол</b>`;
+      netStatus.innerHTML = `👑 Мастер: <b>Одиночная игра</b>`;
 
       btnShareLink.addEventListener('click', () => {
         if (!currentRoomId) {
-          currentRoomId = 'dnd-room-' + Math.random().toString(36).substr(2, 8);
-          btnShareLink.textContent = '⏳ Подключение...';
+          currentRoomId = 'dnd-room-' + Math.random().toString(36).substr(2, 9);
+          btnShareLink.textContent = '⏳ Запуск трансляции...';
 
           connectToBroker(currentRoomId, () => {
             const shareUrl = window.location.href.split('#')[0] + '#' + currentRoomId;
             navigator.clipboard.writeText(shareUrl).then(() => {
-              alert('🔗 Ссылка скопирована!\nОтправьте её игрокам — они смогут смотреть партию онлайн.');
+              alert('🔗 Ссылка скопирована!\n\nКартинки теперь загружаются мгновенно и без задержек.');
             }).catch(() => {
               prompt('Скопируйте эту ссылку для зрителей:', shareUrl);
             });
 
             btnShareLink.textContent = '🔗 Ссылка готова';
-            netStatus.innerHTML = `👑 <b>Трансляция активна</b>`;
+            updateSpectatorBadge();
+
+            setInterval(() => {
+              activeSpectators.clear();
+            }, 45000);
           });
         } else {
           const shareUrl = window.location.href.split('#')[0] + '#' + currentRoomId;
@@ -1078,101 +1259,69 @@
       roleHint.innerHTML = `👁️ <b>Режим зрителя:</b> редактирует Мастер`;
 
       connectToBroker(roomId, () => {
-        netStatus.innerHTML = `👁️ <b>Подключен к столу</b>`;
-        // Запрашиваем актуальный вид поля у Мастера
-        broadcast({ type: 'REQUEST_STATE' });
+        netStatus.innerHTML = `👁️ <b>Онлайн (Трансляция активна)</b>`;
+        mqttClient.publish(`dnd_v3/${roomId}/system`, JSON.stringify({ type: 'PING_JOIN', senderId: clientId }));
+
+        setInterval(() => {
+          if (mqttClient && mqttClient.connected) {
+            mqttClient.publish(`dnd_v3/${roomId}/system`, JSON.stringify({ type: 'PING', senderId: clientId }));
+          }
+        }, 15000);
       });
     }
 
-    function handleIncomingData(data) {
-      if (data.type === 'INIT_STATE') {
-        showGrid = data.showGrid;
-        btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
+    function applyFullState(data) {
+      if (data.type !== 'INIT_STATE') return;
 
-        drawCtx.clearRect(0, 0, drawBuffer.width, drawBuffer.height);
-        if (data.drawingsDataUrl) {
-          const dImg = new Image();
-          dImg.onload = () => {
-            drawCtx.drawImage(dImg, 0, 0);
-            render();
-          };
-          dImg.src = data.drawingsDataUrl;
-        }
+      showGrid = data.showGrid;
+      btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
 
-        tokens = [];
-        if (Array.isArray(data.tokens)) {
-          data.tokens.forEach(tok => {
-            const img = new Image();
-            img.onload = () => {
-              tokens.push({ id: tok.id, img, src: tok.src, x: tok.x, y: tok.y, width: tok.width, height: tok.height });
-              render();
-            };
-            img.src = tok.src;
-          });
+      strokes = data.strokes || [];
+      tokens = data.tokens || [];
+      requestRender();
+    }
+
+    function handleIncomingFastData(data) {
+      if (data.type === 'STROKE_BATCH') {
+        for (let i = 0; i < data.batch.length; i++) {
+          strokes.push(data.batch[i]);
         }
-      } else if (data.type === 'STROKE') {
-        applyStroke(data.from, data.to, data.tool, data.color, data.size);
+        requestRender();
       } else if (data.type === 'TOKENS_UPDATE') {
-        const newTokens = [];
-        let pending = data.tokens.length;
-        if (pending === 0) {
-          tokens = [];
-          render();
-          return;
-        }
-
-        data.tokens.forEach(tok => {
-          const existing = tokens.find(t => t.id === tok.id && t.src === tok.src);
-          if (existing) {
-            existing.x = tok.x;
-            existing.y = tok.y;
-            existing.width = tok.width;
-            existing.height = tok.height;
-            newTokens.push(existing);
-            pending--;
-            if (pending === 0) {
-              tokens = newTokens;
-              render();
-            }
-          } else {
-            const img = new Image();
-            img.onload = () => {
-              newTokens.push({ id: tok.id, img, src: tok.src, x: tok.x, y: tok.y, width: tok.width, height: tok.height });
-              pending--;
-              if (pending === 0) {
-                tokens = newTokens;
-                render();
-              }
-            };
-            img.src = tok.src;
-          }
-        });
+        tokens = data.tokens;
+        requestRender();
       } else if (data.type === 'GRID_TOGGLE') {
         showGrid = data.showGrid;
         btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
-        render();
+        requestRender();
       } else if (data.type === 'CLEAR_DRAWINGS') {
-        drawCtx.clearRect(0, 0, drawBuffer.width, drawBuffer.height);
-        render();
+        strokes = [];
+        requestRender();
       }
     }
 
-    // Сохранение и загрузка файла .dnd
+    // Сохранение и открытие .dnd файлов
     btnSaveProject.addEventListener('click', () => {
+      const assetsList = [];
+      imageAssetCache.forEach((img, assetId) => {
+        assetsList.push({ assetId, src: img.src });
+      });
+
       const session = {
-        version: "1.0",
+        version: "4.0",
         camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
         showGrid: showGrid,
         storageImages: storageImages,
-        tokens: tokens.map(t => ({ id: t.id, src: t.src || t.img.src, x: t.x, y: t.y, width: t.width, height: t.height })),
-        drawingsDataUrl: drawBuffer.toDataURL('image/png')
+        tokens: tokens,
+        strokes: strokes,
+        assets: assetsList
       };
 
       const blob = new Blob([JSON.stringify(session)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Свиток_${Date.now()}.dnd`;
+      a.download = `Свиток_Партии_${Date.now()}.dnd`;
       a.click();
       URL.revokeObjectURL(url);
     });
@@ -1187,30 +1336,35 @@
           const data = JSON.parse(event.target.result);
           gallery.innerHTML = '';
           storageImages = [];
-          if (Array.isArray(data.storageImages)) data.storageImages.forEach(src => addToStorage(src));
 
-          handleIncomingData({
-            type: 'INIT_STATE',
-            showGrid: data.showGrid,
-            drawingsDataUrl: data.drawingsDataUrl,
-            tokens: data.tokens
-          });
+          if (Array.isArray(data.assets)) {
+            data.assets.forEach(a => registerImageAsset(a.src));
+          }
 
-          if (isHost) broadcast(getFullStateSnapshot());
+          if (Array.isArray(data.storageImages)) {
+            data.storageImages.forEach(s => addToStorage(s.assetId, s.src));
+          }
+
+          strokes = data.strokes || [];
+          tokens = data.tokens || [];
+          showGrid = data.showGrid ?? true;
+
+          requestRender();
+
+          if (isHost && currentRoomId) {
+            sendFullStateToSpectators();
+          }
           alert('Свиток успешно загружен!');
         } catch (err) {
-          alert('Ошибка при чтении файла сохранения!');
+          alert('Ошибка чтения файла сохранения!');
         }
       };
       reader.readAsText(file);
       saveFileInput.value = '';
     });
 
-    // Инициализация
     resize();
-    camera.x = WORLD_SIZE / 2 - canvas.width / 2;
-    camera.y = WORLD_SIZE / 2 - canvas.height / 2;
-    render();
+    requestRender();
 
     const hash = window.location.hash.substring(1);
     if (hash && hash.startsWith('dnd-room-')) {
