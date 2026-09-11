@@ -10,23 +10,19 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Порт для Render или 3000 локально
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-// Проверяем и создаем папку uploads, если её нет
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Раздача файлов сайта (public) и загруженных картинок (uploads)
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadsDir));
 
-// Если вдруг index.html лежит в корне проекта, а не в public:
 app.get('/', (req, res) => {
   const publicIndex = path.join(__dirname, 'public', 'index.html');
   if (fs.existsSync(publicIndex)) {
@@ -36,7 +32,6 @@ app.get('/', (req, res) => {
   }
 });
 
-// Настройка сохранения файлов на диск
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
@@ -48,18 +43,14 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024 } // до 15 МБ на файл
+  limits: { fileSize: 15 * 1024 * 1024 }
 });
 
-// Роут для загрузки картинок
 app.post('/upload', upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Файл не прикреплен' });
-  }
+  if (!req.file) return res.status(400).json({ error: 'Файл не прикреплен' });
   res.json({ url: `/uploads/${req.file.filename}` });
 });
 
-// Память комнат: roomId -> { clients: Set, state: { strokes: [], tokens: [], showGrid: true } }
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
@@ -76,9 +67,7 @@ function getOrCreateRoom(roomId) {
   return rooms.get(roomId);
 }
 
-// WebSocket сервер
 wss.on('connection', (ws, req) => {
-  // Извлекаем название комнаты из URL, например: ?room=dungeon1
   let roomId = 'default-room';
   if (req.url && req.url.includes('?')) {
     const urlParams = new URLSearchParams(req.url.split('?')[1]);
@@ -88,7 +77,6 @@ wss.on('connection', (ws, req) => {
   const room = getOrCreateRoom(roomId);
   room.clients.add(ws);
 
-  // Сразу отправляем новому игроку текущее состояние стола
   ws.send(JSON.stringify({
     action: 'INIT_STATE',
     state: room.state
@@ -96,7 +84,6 @@ wss.on('connection', (ws, req) => {
 
   broadcastViewerCount(room);
 
-  // Обработка действий ведущего и игроков
   ws.on('message', (messageRaw) => {
     try {
       const data = JSON.parse(messageRaw);
@@ -123,6 +110,11 @@ wss.on('connection', (ws, req) => {
           room.state.strokes = [];
           broadcastToRoom(room, ws, data);
           break;
+
+        // БРОСОК КУБИКОВ — транслируем всем клиентам в комнате (включая отправителя или без)
+        case 'DICE_ROLL':
+          broadcastToRoom(room, null, data); // null означает отправку абсолютно всем
+          break;
       }
     } catch (err) {
       console.error('Ошибка в WS сообщении:', err);
@@ -138,7 +130,7 @@ wss.on('connection', (ws, req) => {
 function broadcastToRoom(room, senderWs, data) {
   const payload = JSON.stringify(data);
   room.clients.forEach((client) => {
-    if (client !== senderWs && client.readyState === WebSocket.OPEN) {
+    if ((!senderWs || client !== senderWs) && client.readyState === WebSocket.OPEN) {
       client.send(payload);
     }
   });
