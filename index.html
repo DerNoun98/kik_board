@@ -18,6 +18,7 @@
       --metal-bg: linear-gradient(180deg, #46372b 0%, #2b2018 50%, #17100b 100%);
       --metal-active: linear-gradient(180deg, #744d21 0%, #3e2610 100%);
       --parchment: #c8b594;
+      --dice-red: linear-gradient(135deg, #3d140e 0%, #8b2315 50%, #d84315 100%);
     }
 
     * {
@@ -47,12 +48,14 @@
       justify-content: space-between;
       align-items: center;
       z-index: 50;
+      gap: 8px;
     }
 
     .title-box {
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-shrink: 0;
     }
 
     .logo-shield {
@@ -113,6 +116,8 @@
       display: flex;
       gap: 6px;
       align-items: center;
+      flex-wrap: nowrap;
+      overflow-x: auto;
     }
 
     .btn {
@@ -129,6 +134,7 @@
       align-items: center;
       gap: 5px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 4px rgba(0,0,0,0.7);
+      white-space: nowrap;
     }
 
     .btn:hover {
@@ -156,6 +162,62 @@
       box-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
     }
 
+    /* БЛОК КУБИКОВ В ШАПКЕ */
+    .dice-container {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(0,0,0,0.6);
+      padding: 2px 6px;
+      border-radius: 5px;
+      border: 1px solid #6e5239;
+    }
+
+    .dice-input {
+      width: 72px;
+      background: #150f0b;
+      border: 1px solid #5d4633;
+      color: #ffd88a;
+      font-family: 'Cinzel', serif;
+      font-size: 0.8rem;
+      padding: 2px 6px;
+      text-align: center;
+      border-radius: 3px;
+      outline: none;
+    }
+    .dice-input:focus { border-color: #f0c97d; }
+
+    .btn-dice-roll {
+      background: linear-gradient(180deg, #6b261b 0%, #3a150e 100%);
+      border: 1px solid #aa3b29;
+      color: #ffd6cc;
+      font-weight: bold;
+    }
+    .btn-dice-roll:hover {
+      border-color: #ff5722;
+      color: #ffffff;
+      box-shadow: 0 0 8px rgba(255, 87, 34, 0.6);
+    }
+
+    .player-badge {
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(43, 30, 19, 0.8);
+      border: 1px solid #b18544;
+      color: #ffd88a;
+      font-family: 'Cinzel', serif;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+    .player-badge:hover {
+      background: rgba(65, 45, 28, 0.9);
+      border-color: #ffd700;
+    }
+
     .status-badge {
       font-size: 0.75rem;
       padding: 3px 9px;
@@ -167,6 +229,7 @@
       align-items: center;
       gap: 5px;
       font-family: 'Cinzel', serif;
+      white-space: nowrap;
     }
 
     .zoom-box {
@@ -208,8 +271,8 @@
       padding: 10px 14px 12px 14px;
       gap: 12px;
       background:
-        radial-gradient(circle at 17% 20%, rgba(255, 140, 0, 0.35) 0%, rgba(255, 100, 0, 0.1) 22%, transparent 35%),
-        radial-gradient(circle at 94% 22%, rgba(255, 140, 0, 0.35) 0%, rgba(255, 100, 0, 0.1) 22%, transparent 35%),
+        radial-gradient(circle at 17% 20%, rgba(255, 140, 0, 0.35) 0%, transparent 35%),
+        radial-gradient(circle at 94% 22%, rgba(255, 140, 0, 0.35) 0%, transparent 35%),
         radial-gradient(circle at 50% 50%, #2a221b 0%, #120e0b 60%, #080605 100%);
       background-size: cover;
     }
@@ -390,6 +453,168 @@
       display: block;
     }
 
+    /* ОВЕРЛЕЙ 3D-АНИМАЦИИ ПАДЕНИЯ КОСТЕЙ */
+    #dice-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      perspective: 1100px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+
+    .dice-tray {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 22px;
+      max-width: 85%;
+      margin-top: 40px;
+    }
+
+    .die-cube {
+      width: 72px;
+      height: 72px;
+      background: var(--dice-red);
+      border: 3px solid #ffd700;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      font-family: 'Cinzel', serif;
+      box-shadow: 0 25px 35px rgba(0,0,0,0.85), inset 0 0 10px rgba(255, 215, 0, 0.4);
+      transform-style: preserve-3d;
+      animation: dropAndBounce 1.5s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+    }
+
+    .die-val {
+      font-size: 2rem;
+      font-weight: 900;
+      text-shadow: 0 2px 5px #000, 0 0 10px #ffb300;
+      color: #fff;
+    }
+
+    .die-type {
+      font-size: 0.65rem;
+      color: #ffe082;
+      letter-spacing: 1px;
+    }
+
+    @keyframes dropAndBounce {
+      0% {
+        opacity: 0;
+        transform: translateY(-600px) scale(2.4) rotateX(720deg) rotateY(1080deg) rotateZ(360deg);
+      }
+      50% {
+        opacity: 1;
+        transform: translateY(0px) scale(1) rotateX(25deg) rotateY(15deg) rotateZ(10deg);
+      }
+      65% {
+        transform: translateY(-70px) scale(1.1) rotateX(-20deg) rotateY(-10deg);
+      }
+      80% {
+        transform: translateY(0px) scale(0.95) rotateX(10deg) rotateY(5deg);
+      }
+      90% {
+        transform: translateY(-18px) scale(1.02);
+      }
+      100% {
+        transform: translateY(0px) scale(1) rotateX(0deg) rotateY(0deg);
+      }
+    }
+
+    .dice-banner {
+      background: linear-gradient(180deg, rgba(38, 22, 14, 0.97), rgba(18, 10, 6, 0.97));
+      border: 2px solid #e5b869;
+      border-radius: 8px;
+      padding: 10px 24px;
+      color: #ffd88a;
+      font-family: 'Cinzel', serif;
+      font-size: 1.15rem;
+      box-shadow: 0 10px 35px rgba(0,0,0,0.9), 0 0 15px rgba(229, 184, 105, 0.35);
+      animation: bannerSlide 0.35s ease-out forwards;
+      text-align: center;
+    }
+    .dice-banner span { color: #fff; font-weight: 900; font-size: 1.4rem; }
+    .dice-banner-sub { font-size: 0.75rem; color: #bcaaa4; margin-top: 4px; }
+
+    @keyframes bannerSlide {
+      0% { opacity: 0; transform: translateY(-30px) scale(0.85); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* МОДАЛЬНОЕ ОКНО ИМЕНИ */
+    .modal-backdrop {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.85);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      backdrop-filter: blur(4px);
+    }
+    .modal-box {
+      width: 360px;
+      background: linear-gradient(180deg, #241a13 0%, #120c08 100%);
+      border: 3px solid #b18544;
+      border-radius: 8px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.95), inset 0 0 25px rgba(177, 133, 68, 0.25);
+      padding: 24px 20px;
+      text-align: center;
+    }
+    .modal-title {
+      font-family: 'Cinzel', serif;
+      font-size: 1.25rem;
+      color: #f0c97d;
+      margin-bottom: 14px;
+      text-shadow: 0 2px 5px #000;
+    }
+    .modal-desc {
+      font-size: 0.85rem;
+      color: #dfcdb7;
+      margin-bottom: 18px;
+      line-height: 1.4;
+    }
+    .modal-input {
+      width: 100%;
+      padding: 8px 12px;
+      background: #0b0705;
+      border: 1px solid #7a5837;
+      color: #ffd88a;
+      font-family: 'Cinzel', serif;
+      font-size: 0.95rem;
+      border-radius: 4px;
+      outline: none;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+    .modal-input:focus { border-color: #ffd700; box-shadow: 0 0 8px rgba(255,215,0,0.3); }
+    .modal-btn {
+      width: 100%;
+      padding: 8px 0;
+      background: linear-gradient(180deg, #6b261b 0%, #3a150e 100%);
+      border: 1px solid #e5b869;
+      color: #ffd88a;
+      font-family: 'Cinzel', serif;
+      font-size: 0.9rem;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .modal-btn:hover {
+      background: linear-gradient(180deg, #873022 0%, #4a1c12 100%);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(255,215,0,0.4);
+    }
+
     .instructions-card {
       position: absolute;
       bottom: 16px;
@@ -412,6 +637,16 @@
   </style>
 </head>
 <body>
+
+  <!-- ВСПЛЫВАЮЩЕЕ ОКНО ВВОДА ИМЕНИ -->
+  <div class="modal-backdrop" id="name-modal">
+    <div class="modal-box">
+      <div class="modal-title">⚔️ Врата Подземелья</div>
+      <div class="modal-desc">Назовите своего персонажа, чтобы Мастер и соратники знали, кто бросает кости:</div>
+      <input type="text" id="player-name-input" class="modal-input" maxlength="24" placeholder="Имя героя...">
+      <button class="modal-btn" id="btn-save-name">Войти в игру</button>
+    </div>
+  </div>
 
   <header>
     <div class="title-box">
@@ -443,6 +678,19 @@
     </div>
 
     <div class="toolbar">
+      <!-- БЕЙДЖ ИМЕНИ ИГРОКА (КЛИКАБЕЛЬНЫЙ) -->
+      <div class="player-badge" id="player-badge" title="Нажмите, чтобы сменить имя">👤 <span id="current-player-name">Странник</span></div>
+
+      <!-- БЛОК БРОСКА КУБИКОВ -->
+      <div class="dice-container">
+        <span>🎲</span>
+        <input type="text" id="dice-formula" class="dice-input" value="1d20" title="Формула: 1d20, 2d6, 3d8+3, 1d100">
+        <button class="btn btn-dice-roll" id="btn-roll-dice">Бросить!</button>
+        <button class="btn" style="padding:2px 5px;" onclick="quickRoll('1d20')">d20</button>
+        <button class="btn" style="padding:2px 5px;" onclick="quickRoll('1d12')">d12</button>
+        <button class="btn" style="padding:2px 5px;" onclick="quickRoll('1d6')">d6</button>
+      </div>
+
       <button class="btn active editor-only" id="tool-select" title="Горячая клавиша: V">✋ Перемещение</button>
       <button class="btn editor-only" id="tool-brush" title="Горячая клавиша: B">🖌️ Кисть</button>
       <button class="btn editor-only" id="tool-eraser" title="Горячая клавиша: E">🧹 Ластик</button>
@@ -493,10 +741,12 @@
       <div class="scroll-roll-top"></div>
       <div class="canvas-viewport" id="canvas-wrapper">
         <canvas id="viewport-canvas"></canvas>
+        <div id="dice-overlay"></div>
       </div>
     </section>
 
     <div class="instructions-card">
+      • <b>Кубики:</b> введите формулу (<b>2d6</b>, <b>1d20+3</b>) и нажмите «Бросить!»<br>
       • <b>Зум:</b> Колёсико мыши (независимый у каждого)<br>
       • <b>Панорама:</b> Колёсико или <b>Пробел + ЛКМ</b><br>
       <span id="role-hint">• <b>Изображения:</b> Перетаскивание инструментом «✋»</span>
@@ -507,6 +757,7 @@
     const wrapper = document.getElementById('canvas-wrapper');
     const canvas = document.getElementById('viewport-canvas');
     const ctx = canvas.getContext('2d');
+    const diceOverlay = document.getElementById('dice-overlay');
 
     const fileInput = document.getElementById('file-input');
     const saveFileInput = document.getElementById('save-file-input');
@@ -528,6 +779,15 @@
     const btnZoomIn = document.getElementById('btn-zoom-in');
     const btnZoomOut = document.getElementById('btn-zoom-out');
     const btnZoomReset = document.getElementById('btn-zoom-reset');
+
+    const diceFormulaInput = document.getElementById('dice-formula');
+    const btnRollDice = document.getElementById('btn-roll-dice');
+
+    const nameModal = document.getElementById('name-modal');
+    const playerNameInput = document.getElementById('player-name-input');
+    const btnSaveName = document.getElementById('btn-save-name');
+    const playerBadge = document.getElementById('player-badge');
+    const currentPlayerNameSpan = document.getElementById('current-player-name');
 
     let camera = { x: 0, y: 0, zoom: 1.0, minZoom: 0.2, maxZoom: 5.0 };
     let isPanning = false;
@@ -560,6 +820,36 @@
     let peer = null;
     let hostConnection = null;
     let activeConnections = [];
+
+    // ==========================================
+    // ЛОГИКА ИМЕНИ ИГРОКА
+    // ==========================================
+    let savedName = localStorage.getItem('dnd_player_name');
+    let playerName = savedName || '';
+
+    function updatePlayerNameDisplay() {
+      currentPlayerNameSpan.textContent = playerName || 'Странник';
+    }
+
+    function promptNameModal() {
+      playerNameInput.value = playerName || '';
+      nameModal.style.display = 'flex';
+      setTimeout(() => playerNameInput.focus(), 50);
+    }
+
+    btnSaveName.onclick = () => {
+      const val = playerNameInput.value.trim();
+      playerName = val || ('Странник #' + Math.floor(100 + Math.random() * 900));
+      localStorage.setItem('dnd_player_name', playerName);
+      updatePlayerNameDisplay();
+      nameModal.style.display = 'none';
+    };
+
+    playerNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') btnSaveName.click();
+    });
+
+    playerBadge.onclick = promptNameModal;
 
     function screenToWorld(sx, sy) {
       return {
@@ -911,6 +1201,117 @@
       }
     });
 
+    // ==========================================
+    // ЛОГИКА И 3D-АНИМАЦИЯ БРОСКА КУБИКОВ
+    // ==========================================
+
+    function parseAndRollDice(formulaStr) {
+      const clean = formulaStr.toLowerCase().replace('к', 'd').replace(/\s+/g, '');
+      const match = clean.match(/^(\d*)d(\d+)([+-]\d+)?$/);
+
+      if (!match) {
+        alert('Формат: XdY (например: 1d20, 2d6, 3d8+3, 1d100)');
+        return null;
+      }
+
+      const count = match[1] ? parseInt(match[1], 10) : 1;
+      const sides = parseInt(match[2], 10);
+      const modifier = match[3] ? parseInt(match[3], 10) : 0;
+
+      if (count <= 0 || count > 20) {
+        alert('Число кубиков: от 1 до 20');
+        return null;
+      }
+      if (sides <= 1 || sides > 1000) {
+        alert('Количество граней: от 2 до 1000');
+        return null;
+      }
+
+      const rolls = [];
+      let sum = 0;
+      for (let i = 0; i < count; i++) {
+        const val = Math.floor(Math.random() * sides) + 1;
+        rolls.push(val);
+        sum += val;
+      }
+      sum += modifier;
+
+      const currentSender = playerName || (isHost ? 'Мастер' : 'Странник');
+
+      return {
+        sender: currentSender,
+        formula: formulaStr,
+        count,
+        sides,
+        modifier,
+        rolls,
+        total: sum
+      };
+    }
+
+    function triggerRoll(formula) {
+      if (!playerName) {
+        promptNameModal();
+        return;
+      }
+
+      const rollData = parseAndRollDice(formula);
+      if (!rollData) return;
+
+      showDiceAnimation(rollData);
+
+      if (isHost) {
+        broadcastP2P({ action: 'DICE_ROLL', rollData });
+      } else if (hostConnection && hostConnection.open) {
+        hostConnection.send({ action: 'DICE_ROLL', rollData });
+      }
+    }
+
+    function quickRoll(formula) {
+      diceFormulaInput.value = formula;
+      triggerRoll(formula);
+    }
+
+    btnRollDice.onclick = () => triggerRoll(diceFormulaInput.value);
+    diceFormulaInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') triggerRoll(diceFormulaInput.value);
+    });
+
+    let activeDiceTimeout = null;
+    function showDiceAnimation(data) {
+      if (activeDiceTimeout) clearTimeout(activeDiceTimeout);
+      diceOverlay.innerHTML = '';
+
+      const banner = document.createElement('div');
+      banner.className = 'dice-banner';
+      const modText = data.modifier ? (data.modifier > 0 ? ` +${data.modifier}` : ` ${data.modifier}`) : '';
+      banner.innerHTML = `
+        ${data.sender}: бросок <b>${data.formula}</b> = <span>${data.total}</span>
+        <div class="dice-banner-sub">[${data.rolls.join(', ')}]${modText}</div>
+      `;
+      diceOverlay.appendChild(banner);
+
+      const tray = document.createElement('div');
+      tray.className = 'dice-tray';
+
+      data.rolls.forEach((val, idx) => {
+        const die = document.createElement('div');
+        die.className = 'die-cube';
+        die.style.animationDelay = `${idx * 0.07}s`;
+        die.innerHTML = `
+          <div class="die-val">${val}</div>
+          <div class="die-type">d${data.sides}</div>
+        `;
+        tray.appendChild(die);
+      });
+
+      diceOverlay.appendChild(tray);
+
+      activeDiceTimeout = setTimeout(() => {
+        diceOverlay.innerHTML = '';
+      }, 4500);
+    }
+
     function registerImageAsset(src) {
       let hash = 0;
       for (let i = 0; i < src.length; i++) {
@@ -1048,11 +1449,11 @@
     // ВЫСОКОСКОРОСТНОЕ P2P-СОЕДИНЕНИЕ НА WEBRTC
     // ========================================================
 
-    function broadcastP2P(data) {
+    function broadcastP2P(data, excludeConn = null) {
       if (!isHost) return;
       for (let i = 0; i < activeConnections.length; i++) {
         const conn = activeConnections[i];
-        if (conn && conn.open) {
+        if (conn && conn.open && conn !== excludeConn) {
           try {
             conn.send(data);
           } catch (e) {
@@ -1113,12 +1514,17 @@
       netStatus.style.display = 'inline-flex';
       netStatus.innerHTML = `👑 Мастер: <b>Одиночный стол</b>`;
 
+      if (!playerName) {
+        playerName = 'Мастер Подземелий';
+        localStorage.setItem('dnd_player_name', playerName);
+      }
+      updatePlayerNameDisplay();
+
       btnShareLink.addEventListener('click', () => {
         if (!peer) {
           btnShareLink.textContent = '⏳ Создание...';
           const hostId = 'dnd-fast-' + Math.random().toString(36).substr(2, 8);
 
-          // Инициализация WebRTC с STUN-серверами Google для мгновенного пробития NAT
           peer = new Peer(hostId, {
             config: {
               iceServers: [
@@ -1145,13 +1551,15 @@
 
             conn.on('open', () => {
               updateSpectatorsCount();
-              // Моментально отдаем новому зрителю текущую карту мастера
               conn.send(getFullStateSnapshot());
             });
 
             conn.on('data', (data) => {
               if (data && data.action === 'REQUEST_SYNC') {
                 conn.send(getFullStateSnapshot());
+              } else if (data && data.action === 'DICE_ROLL') {
+                showDiceAnimation(data.rollData);
+                broadcastP2P({ action: 'DICE_ROLL', rollData: data.rollData }, conn);
               }
             });
 
@@ -1187,6 +1595,12 @@
       netStatus.style.display = 'inline-flex';
       netStatus.innerHTML = `⏳ <b>Быстрое подключение...</b>`;
 
+      if (!savedName) {
+        promptNameModal();
+      } else {
+        updatePlayerNameDisplay();
+      }
+
       peer = new Peer({
         config: {
           iceServers: [
@@ -1197,7 +1611,6 @@
       });
 
       peer.on('open', () => {
-        // Подключаемся напрямую к мастеру
         hostConnection = peer.connect(hostId, { reliable: true });
 
         hostConnection.on('open', () => {
@@ -1259,6 +1672,8 @@
       } else if (data.action === 'CLEAR_DRAWINGS') {
         strokes = [];
         requestRender();
+      } else if (data.action === 'DICE_ROLL') {
+        showDiceAnimation(data.rollData);
       }
     }
 
