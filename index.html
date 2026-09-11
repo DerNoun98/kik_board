@@ -7,6 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Marcellus&display=swap" rel="stylesheet">
+  
+  <!-- PeerJS для прямого высокоскоростного P2P соединения -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 
   <style>
     :root {
@@ -34,7 +37,6 @@
       overflow: hidden;
     }
 
-    /* ВЕРХНЯЯ КОВАНАЯ ПАНЕЛЬ */
     header {
       height: 52px;
       background: linear-gradient(180deg, #2b2118 0%, #18120d 70%, #0c0806 100%);
@@ -53,7 +55,6 @@
       gap: 12px;
     }
 
-    /* КОВАНЫЙ ЩИТ-ЛОГОТИП */
     .logo-shield {
       width: 36px;
       height: 44px;
@@ -143,6 +144,31 @@
       box-shadow: inset 0 0 5px rgba(0,0,0,0.8), 0 0 10px rgba(241, 183, 94, 0.5);
     }
 
+    .btn-share {
+      border-color: #8b6b23;
+      background: linear-gradient(180deg, #574116 0%, #30220a 100%);
+      color: #ffd782;
+      font-weight: bold;
+    }
+    .btn-share:hover {
+      border-color: #ffd700;
+      color: #ffffff;
+      box-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
+    }
+
+    .status-badge {
+      font-size: 0.75rem;
+      padding: 3px 9px;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.65);
+      border: 1px solid #5d4633;
+      color: #a4d492;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-family: 'Cinzel', serif;
+    }
+
     .zoom-box {
       display: flex;
       align-items: center;
@@ -174,7 +200,6 @@
       color: var(--gold-text);
     }
 
-    /* ОСНОВНАЯ СЦЕНА ПОДЗЕМЕЛЬЯ */
     .dungeon-scene {
       flex: 1;
       position: relative;
@@ -189,7 +214,6 @@
       background-size: cover;
     }
 
-    /* ЛЕВАЯ КОЛОНКА - ИЗОБРАЖЕНИЯ */
     .sidebar-scroll {
       width: 240px;
       height: 100%;
@@ -201,6 +225,11 @@
       box-shadow: inset 0 0 20px rgba(0,0,0,0.9), 0 6px 20px rgba(0,0,0,0.8);
       position: relative;
       z-index: 10;
+    }
+
+    body.spectator-mode .sidebar-scroll,
+    body.spectator-mode .editor-only {
+      display: none !important;
     }
 
     .scroll-head {
@@ -298,7 +327,6 @@
 
     .gallery-item:hover .del-btn { display: block; }
 
-    /* ДЕКОРАТИВНЫЕ СИЛУЭТЫ СТРАЖЕЙ */
     .lizard-guard {
       position: absolute;
       bottom: 0;
@@ -322,7 +350,6 @@
       background-image: radial-gradient(circle at 40% 25%, rgba(60, 255, 100, 0.3) 0%, transparent 40%);
     }
 
-    /* ЦЕНТРАЛЬНЫЙ СТОЛ (ПОЛНОРАЗМЕРНЫЙ СВИТОК) */
     .scroll-table-container {
       flex: 1;
       height: 100%;
@@ -386,7 +413,6 @@
 </head>
 <body>
 
-  <!-- Верхняя панель инструментов -->
   <header>
     <div class="title-box">
       <div class="logo-shield" title="Крокодилы и Канализации">
@@ -417,16 +443,16 @@
     </div>
 
     <div class="toolbar">
-      <button class="btn active" id="tool-select" title="Горячая клавиша: V">✋ Перемещение</button>
-      <button class="btn" id="tool-brush" title="Горячая клавиша: B">🖌️ Кисть</button>
-      <button class="btn" id="tool-eraser" title="Горячая клавиша: E">🧹 Ластик</button>
+      <button class="btn active editor-only" id="tool-select" title="Горячая клавиша: V">✋ Перемещение</button>
+      <button class="btn editor-only" id="tool-brush" title="Горячая клавиша: B">🖌️ Кисть</button>
+      <button class="btn editor-only" id="tool-eraser" title="Горячая клавиша: E">🧹 Ластик</button>
 
-      <div class="range-box">
+      <div class="range-box editor-only">
         <label for="brush-color">Цвет:</label>
         <input type="color" id="brush-color" value="#8b1c1c">
       </div>
 
-      <div class="range-box">
+      <div class="range-box editor-only">
         <label for="brush-size">Размер:</label>
         <input type="range" id="brush-size" min="2" max="60" value="6">
       </div>
@@ -439,15 +465,17 @@
       </div>
 
       <button class="btn" id="btn-toggle-grid">🕸️ Сетка</button>
-      <button class="btn" id="btn-clear-drawings" style="color: #ff9d9d;">Очистить рисунки</button>
+      <button class="btn editor-only" id="btn-clear-drawings" style="color: #ff9d9d;">Очистить рисунки</button>
 
-      <button class="btn" id="btn-save-project" title="Сохранить в файл">💾 Сохранить</button>
-      <button class="btn" id="btn-load-trigger" title="Загрузить из файла">📂 Загрузить</button>
+      <button class="btn editor-only" id="btn-save-project" title="Сохранить в файл">💾 Сохранить</button>
+      <button class="btn editor-only" id="btn-load-trigger" title="Загрузить из файла">📂 Загрузить</button>
       <input type="file" id="save-file-input" accept=".dnd,.json">
+
+      <button class="btn btn-share" id="btn-share-link">🔗 Поделиться столом</button>
+      <div class="status-badge" id="net-status" style="display: none;"></div>
     </div>
   </header>
 
-  <!-- Сцена -->
   <main class="dungeon-scene">
     <aside class="sidebar-scroll">
       <div class="scroll-head">Изображения</div>
@@ -469,9 +497,9 @@
     </section>
 
     <div class="instructions-card">
-      • <b>Зум:</b> Колёсико мыши<br>
+      • <b>Зум:</b> Колёсико мыши (независимый у каждого)<br>
       • <b>Панорама:</b> Колёсико или <b>Пробел + ЛКМ</b><br>
-      • <b>Изображения:</b> Перетаскивание инструментом «✋»
+      <span id="role-hint">• <b>Изображения:</b> Перетаскивание инструментом «✋»</span>
     </div>
   </main>
 
@@ -492,6 +520,9 @@
     const btnClearDrawings = document.getElementById('btn-clear-drawings');
     const btnSaveProject = document.getElementById('btn-save-project');
     const btnLoadTrigger = document.getElementById('btn-load-trigger');
+    const btnShareLink = document.getElementById('btn-share-link');
+    const netStatus = document.getElementById('net-status');
+    const roleHint = document.getElementById('role-hint');
 
     const zoomLevelDisplay = document.getElementById('zoom-level');
     const btnZoomIn = document.getElementById('btn-zoom-in');
@@ -507,6 +538,8 @@
     let currentTool = 'select';
     let isDrawing = false;
     let lastWorldPos = { x: 0, y: 0 };
+    let strokeBatch = [];
+    let strokeTimer = null;
     let renderRequested = false;
 
     let showGrid = true;
@@ -522,6 +555,11 @@
     let tokenOffsetX = 0;
     let tokenOffsetY = 0;
     const RESIZE_HANDLE_RADIUS = 9;
+
+    let isHost = true;
+    let peer = null;
+    let hostConnection = null;
+    let activeConnections = [];
 
     function screenToWorld(sx, sy) {
       return {
@@ -586,8 +624,8 @@
         }
       }
 
-      // Выделение токена
-      if (selectedToken) {
+      // Выделение токена у мастера
+      if (selectedToken && isHost) {
         ctx.save();
         ctx.strokeStyle = '#d49635';
         ctx.lineWidth = 2.5 / camera.zoom;
@@ -689,7 +727,7 @@
         return;
       }
 
-      if (e.button !== 0) return;
+      if (e.button !== 0 || !isHost) return;
 
       if (currentTool === 'select') {
         if (selectedToken && isInResizeHandle(worldPos.x, worldPos.y, selectedToken)) {
@@ -706,6 +744,7 @@
 
           tokens = tokens.filter(t => t !== clicked);
           tokens.push(clicked);
+          broadcastTokens();
         } else {
           selectedToken = null;
         }
@@ -714,6 +753,7 @@
         isDrawing = true;
         lastWorldPos = worldPos;
         addStroke(worldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
+        queueStrokeForBroadcast(worldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
       }
     });
 
@@ -732,11 +772,17 @@
         return;
       }
 
+      if (!isHost) {
+        canvas.style.cursor = isSpacePressed ? 'grab' : 'default';
+        return;
+      }
+
       if (currentTool === 'select') {
         if (isResizingToken && selectedToken) {
           selectedToken.width = Math.max(25, Math.round(worldPos.x - selectedToken.x));
           selectedToken.height = Math.max(25, Math.round(worldPos.y - selectedToken.y));
           requestRender();
+          broadcastTokensThrottled();
           return;
         }
 
@@ -744,6 +790,7 @@
           selectedToken.x = Math.round(worldPos.x - tokenOffsetX);
           selectedToken.y = Math.round(worldPos.y - tokenOffsetY);
           requestRender();
+          broadcastTokensThrottled();
           return;
         }
 
@@ -760,6 +807,7 @@
         canvas.style.cursor = 'crosshair';
         if (isDrawing) {
           addStroke(lastWorldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
+          queueStrokeForBroadcast(lastWorldPos, worldPos, currentTool, colorPicker.value, parseInt(sizePicker.value, 10));
           lastWorldPos = worldPos;
         }
       }
@@ -770,6 +818,7 @@
       isDraggingToken = false;
       isResizingToken = false;
       isDrawing = false;
+      flushStrokes();
       if (isSpacePressed) canvas.style.cursor = 'grab';
     });
 
@@ -784,7 +833,27 @@
       requestRender();
     }
 
+    function queueStrokeForBroadcast(from, to, tool, color, size) {
+      if (!isHost) return;
+      strokeBatch.push({ from: [Math.round(from.x), Math.round(from.y)], to: [Math.round(to.x), Math.round(to.y)], tool, color, size });
+      if (!strokeTimer) {
+        strokeTimer = setTimeout(flushStrokes, 25);
+      }
+    }
+
+    function flushStrokes() {
+      if (strokeTimer) {
+        clearTimeout(strokeTimer);
+        strokeTimer = null;
+      }
+      if (strokeBatch.length > 0) {
+        broadcastP2P({ action: 'STROKE_BATCH', batch: strokeBatch });
+        strokeBatch = [];
+      }
+    }
+
     function setTool(t) {
+      if (!isHost) return;
       currentTool = t;
       [btnSelect, btnBrush, btnEraser].forEach(b => b.classList.remove('active'));
       if (t === 'select') btnSelect.classList.add('active');
@@ -806,6 +875,7 @@
         isSpacePressed = true;
         canvas.style.cursor = 'grab';
       }
+      if (!isHost) return;
 
       if (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М') setTool('select');
       if (e.key === 'b' || e.key === 'B' || e.key === 'и' || e.key === 'И') setTool('brush');
@@ -815,6 +885,7 @@
         tokens = tokens.filter(t => t !== selectedToken);
         selectedToken = null;
         requestRender();
+        broadcastTokens();
       }
     });
 
@@ -829,12 +900,14 @@
       showGrid = !showGrid;
       btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
       requestRender();
+      if (isHost) broadcastP2P({ action: 'GRID_TOGGLE', showGrid });
     });
 
     btnClearDrawings.addEventListener('click', () => {
       if (confirm('Стереть все рисунки со свитка? (Изображения останутся)')) {
         strokes = [];
         requestRender();
+        if (isHost) broadcastP2P({ action: 'CLEAR_DRAWINGS' });
       }
     });
 
@@ -861,14 +934,39 @@
         if (!file.type.startsWith('image/')) continue;
         const reader = new FileReader();
         reader.onload = (event) => {
-          const src = event.target.result;
-          const assetId = registerImageAsset(src);
-          addToStorage(assetId, src);
+          compressImage(event.target.result, 700, 0.7, (compressedSrc) => {
+            const assetId = registerImageAsset(compressedSrc);
+            addToStorage(assetId, compressedSrc);
+            if (isHost) broadcastP2P({ action: 'NEW_ASSET', assetId, src: compressedSrc });
+          });
         };
         reader.readAsDataURL(file);
       }
       fileInput.value = '';
     });
+
+    function compressImage(src, maxDim, quality, callback) {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        callback(c.toDataURL('image/jpeg', quality));
+      };
+      img.src = src;
+    }
 
     function addToStorage(assetId, src) {
       if (!storageImages.some(s => s.assetId === assetId)) {
@@ -916,10 +1014,12 @@
       selectedToken = token;
       setTool('select');
       requestRender();
+      if (isHost) broadcastTokens();
     }
 
-    wrapper.addEventListener('dragover', (e) => { e.preventDefault(); });
+    wrapper.addEventListener('dragover', (e) => { if (isHost) e.preventDefault(); });
     wrapper.addEventListener('drop', (e) => {
+      if (!isHost) return;
       e.preventDefault();
       const raw = e.dataTransfer.getData('text/plain');
       const rect = canvas.getBoundingClientRect();
@@ -932,15 +1032,235 @@
         if (file.type.startsWith('image/')) {
           const reader = new FileReader();
           reader.onload = (ev) => {
-            const src = ev.target.result;
-            const assetId = registerImageAsset(src);
-            addToStorage(assetId, src);
-            createImageObject(assetId, dropWorld.x - 60, dropWorld.y - 60);
+            compressImage(ev.target.result, 700, 0.7, (cSrc) => {
+              const assetId = registerImageAsset(cSrc);
+              addToStorage(assetId, cSrc);
+              createImageObject(assetId, dropWorld.x - 60, dropWorld.y - 60);
+              if (isHost) broadcastP2P({ action: 'NEW_ASSET', assetId, src: cSrc });
+            });
           };
           reader.readAsDataURL(file);
         }
       }
     });
+
+    // ========================================================
+    // ВЫСОКОСКОРОСТНОЕ P2P-СОЕДИНЕНИЕ НА WEBRTC
+    // ========================================================
+
+    function broadcastP2P(data) {
+      if (!isHost) return;
+      for (let i = 0; i < activeConnections.length; i++) {
+        const conn = activeConnections[i];
+        if (conn && conn.open) {
+          try {
+            conn.send(data);
+          } catch (e) {
+            console.error("P2P send err:", e);
+          }
+        }
+      }
+    }
+
+    let tokenThrottler = null;
+    function broadcastTokensThrottled() {
+      if (!tokenThrottler) {
+        tokenThrottler = setTimeout(() => {
+          broadcastTokens();
+          tokenThrottler = null;
+        }, 30);
+      }
+    }
+
+    function broadcastTokens() {
+      const lightTokens = tokens.map(t => ({
+        id: t.id,
+        assetId: t.assetId,
+        x: t.x,
+        y: t.y,
+        width: t.width,
+        height: t.height
+      }));
+      broadcastP2P({ action: 'TOKENS_UPDATE', tokens: lightTokens });
+    }
+
+    function getFullStateSnapshot() {
+      const assetsList = [];
+      imageAssetCache.forEach((img, assetId) => {
+        assetsList.push({ assetId, src: img.src });
+      });
+
+      return {
+        action: 'FULL_SYNC',
+        showGrid: showGrid,
+        strokes: strokes,
+        assets: assetsList,
+        tokens: tokens.map(t => ({
+          id: t.id,
+          assetId: t.assetId,
+          x: t.x,
+          y: t.y,
+          width: t.width,
+          height: t.height
+        }))
+      };
+    }
+
+    // Режим Хоста (Мастера)
+    function initHostMode() {
+      isHost = true;
+      document.body.classList.remove('spectator-mode');
+      netStatus.style.display = 'inline-flex';
+      netStatus.innerHTML = `👑 Мастер: <b>Одиночный стол</b>`;
+
+      btnShareLink.addEventListener('click', () => {
+        if (!peer) {
+          btnShareLink.textContent = '⏳ Создание...';
+          const hostId = 'dnd-fast-' + Math.random().toString(36).substr(2, 8);
+
+          // Инициализация WebRTC с STUN-серверами Google для мгновенного пробития NAT
+          peer = new Peer(hostId, {
+            config: {
+              iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+              ]
+            }
+          });
+
+          peer.on('open', (id) => {
+            const shareUrl = window.location.href.split('#')[0] + '#' + id;
+            navigator.clipboard.writeText(shareUrl).then(() => {
+              alert('🔗 Ссылка скопирована!\n\nОтправьте её игрокам — прямое P2P подключение происходит за секунду.');
+            }).catch(() => {
+              prompt('Скопируйте эту ссылку для зрителей:', shareUrl);
+            });
+
+            btnShareLink.textContent = '🔗 Ссылка готова';
+            netStatus.innerHTML = `🟢 Мастер (Зрителей: <b>0</b>)`;
+          });
+
+          peer.on('connection', (conn) => {
+            activeConnections.push(conn);
+
+            conn.on('open', () => {
+              updateSpectatorsCount();
+              // Моментально отдаем новому зрителю текущую карту мастера
+              conn.send(getFullStateSnapshot());
+            });
+
+            conn.on('data', (data) => {
+              if (data && data.action === 'REQUEST_SYNC') {
+                conn.send(getFullStateSnapshot());
+              }
+            });
+
+            conn.on('close', () => {
+              activeConnections = activeConnections.filter(c => c !== conn);
+              updateSpectatorsCount();
+            });
+          });
+
+          peer.on('error', (err) => {
+            console.error("Peer error:", err);
+            netStatus.innerHTML = `❌ Ошибка сети`;
+          });
+        } else {
+          const shareUrl = window.location.href.split('#')[0] + '#' + peer.id;
+          navigator.clipboard.writeText(shareUrl).then(() => {
+            alert('🔗 Ссылка повторно скопирована в буфер обмена!');
+          });
+        }
+      });
+    }
+
+    function updateSpectatorsCount() {
+      netStatus.innerHTML = `🟢 Мастер (Зрителей: <b>${activeConnections.length}</b>)`;
+    }
+
+    // Режим Зрителя (Игрока)
+    function initSpectatorMode(hostId) {
+      isHost = false;
+      document.body.classList.add('spectator-mode');
+      btnShareLink.style.display = 'none';
+      roleHint.innerHTML = `👁️ <b>Режим зрителя:</b> редактирует Мастер`;
+      netStatus.style.display = 'inline-flex';
+      netStatus.innerHTML = `⏳ <b>Быстрое подключение...</b>`;
+
+      peer = new Peer({
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
+      });
+
+      peer.on('open', () => {
+        // Подключаемся напрямую к мастеру
+        hostConnection = peer.connect(hostId, { reliable: true });
+
+        hostConnection.on('open', () => {
+          netStatus.innerHTML = `🟢 <b>Прямой эфир (P2P 60 FPS)</b>`;
+          hostConnection.send({ action: 'REQUEST_SYNC' });
+        });
+
+        hostConnection.on('data', (data) => {
+          handleIncomingP2P(data);
+        });
+
+        hostConnection.on('close', () => {
+          netStatus.innerHTML = `🔴 Мастер отключился`;
+        });
+      });
+
+      peer.on('error', (err) => {
+        console.error("Spectator error:", err);
+        netStatus.innerHTML = `❌ Ошибка подключения`;
+      });
+    }
+
+    function handleIncomingP2P(data) {
+      if (!data || !data.action) return;
+
+      if (data.action === 'FULL_SYNC') {
+        showGrid = data.showGrid ?? true;
+        btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
+
+        strokes = data.strokes || [];
+
+        if (Array.isArray(data.assets)) {
+          data.assets.forEach(a => registerImageAsset(a.src));
+        }
+
+        tokens = data.tokens || [];
+        requestRender();
+      } else if (data.action === 'STROKE_BATCH') {
+        if (data.batch) {
+          for (let i = 0; i < data.batch.length; i++) {
+            strokes.push(data.batch[i]);
+          }
+          requestRender();
+        }
+      } else if (data.action === 'TOKENS_UPDATE') {
+        if (data.tokens) {
+          tokens = data.tokens;
+          requestRender();
+        }
+      } else if (data.action === 'NEW_ASSET') {
+        if (!imageAssetCache.has(data.assetId)) {
+          registerImageAsset(data.src);
+          requestRender();
+        }
+      } else if (data.action === 'GRID_TOGGLE') {
+        showGrid = data.showGrid;
+        btnGrid.textContent = showGrid ? '🕸️ Сетка' : '🕸️ Без сетки';
+        requestRender();
+      } else if (data.action === 'CLEAR_DRAWINGS') {
+        strokes = [];
+        requestRender();
+      }
+    }
 
     // Сохранение и загрузка .dnd
     btnSaveProject.addEventListener('click', () => {
@@ -950,7 +1270,7 @@
       });
 
       const session = {
-        version: "7.0",
+        version: "6.0",
         camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
         showGrid: showGrid,
         storageImages: storageImages,
@@ -992,6 +1312,10 @@
           showGrid = data.showGrid ?? true;
 
           requestRender();
+
+          if (isHost && peer) {
+            broadcastP2P(getFullStateSnapshot());
+          }
           alert('Свиток успешно загружен!');
         } catch (err) {
           alert('Ошибка чтения файла сохранения!');
@@ -1003,6 +1327,13 @@
 
     resize();
     requestRender();
+
+    const hash = window.location.hash.substring(1);
+    if (hash && hash.startsWith('dnd-fast-')) {
+      initSpectatorMode(hash);
+    } else {
+      initHostMode();
+    }
   </script>
 </body>
 </html>
